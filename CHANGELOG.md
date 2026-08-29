@@ -25,6 +25,19 @@ invented timestamps is worse than no log, because the ordering lies silently.
 
 ---
 
+## 2026-08-29T17:12-0500 · supabase · Diego/claude
+Policy and evidence spine: 22 new tables (operations, mandates, rfqs, offers + cost
+components, commitments + transitions, evidence, policy_decisions, ledger_events,
+participant_segments, fx_rate_snapshots, drayage vertical). All six migrations are now
+applied to the `Execute` project, which was empty -- including the two on `martin`.
+→ Affects: **everyone.** `SUPABASE_URL` must point at `hizwyjrjvzrdohuxklle`; the schema
+  existed nowhere before this. `call_recaps`/`call_briefs`/`call_recap_deliveries` gained
+  `case_id` (the `call_sid` FK still works). `call_cases` gained `provider`,
+  `provider_call_id`, `clock_reference_at`. `call_transcript_events` gained `confidence`.
+  Persona 4: read-model tables now carry a `select` policy for `authenticated`, so Realtime
+  works -- this reverses the RLS comment in `20260829125514` and needs martin's ack.
+  Persona 1: `recordings` exists and is empty because no `<Record>` is configured anywhere.
+  Reasoning in `docs/DATA_MODEL.md`.
 ## 2026-08-29T14:10-0500 · domain, repo, ledger, agent, notify, realtime, telephony, main, supabase · Martin/claude
 Built the call-evidence → recap → email path and folded the standalone `apps/voice`
 service into `backend/app/` under the layering contract (`apps/voice/`, root
