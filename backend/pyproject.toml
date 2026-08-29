@@ -15,6 +15,10 @@ dependencies = [
     "openai>=1.57",
     "websockets>=13.1",
     "supabase>=2.10",
+    # Twilio posts its webhooks as x-www-form-urlencoded; Starlette needs this to
+    # parse them at all. Without it every inbound call 500s and the caller hears silence.
+    "python-multipart>=0.0.32",
+    "openai-agents>=0.22.0",
 ]
 
 [dependency-groups]
@@ -41,6 +45,10 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+# `package = false` below means app/ is never installed into the venv, so tests need the
+# backend root on sys.path to `import app`. Until now no test imported the package —
+# test_layering.py reads the source with ast rather than importing it.
+pythonpath = ["."]
 
 [tool.uv]
 package = false

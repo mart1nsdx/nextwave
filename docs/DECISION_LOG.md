@@ -89,3 +89,58 @@ generated. Logging every commit duplicates `git log` with worse tooling.
 
 **Cost:** concurrent appends conflict. Mitigated by a rule in both `AGENTS.md` and the
 file header: keep both entries, order by timestamp, never resolve by deleting.
+
+## D7 — Cascade STT → LLM → TTS, not OpenAI's Realtime API
+
+**Decided:** the voice path is three separable stages — Deepgram recognises, an OpenAI
+model reasons via the Agents SDK, Deepgram synthesises — orchestrated by us in `voice/`.
+`realtime/` was renamed to `voice/` accordingly; keeping the old name would have
+described a vendor we no longer use.
+
+**Beat:** OpenAI's speech-to-speech Realtime API, which `docs/CHALLENGE.md` explicitly
+suggests ("its Realtime API is a natural fit").
+
+**Why:** three reasons, in order of weight.
+
+1. **We own the turn.** The trial-by-fire is a judge interrupting mid-sentence. With a
+   cascade, barge-in is our code: local VAD fires in ~20 ms, we send Twilio `clear`,
+   Deepgram `Clear`, and cancel the model run. With speech-to-speech, interruption
+   behaviour is the vendor's, and we cannot tune it at hour 20.
+2. **Providers are swappable under time pressure.** STT accuracy on a noisy Mexican
+   phone line is the single largest risk to the demo, and it is not knowable in advance.
+   `STT_PROVIDER` is a one-line change behind a Protocol. Speech-to-speech is all or
+   nothing.
+3. **The transcript is a first-class artifact, not a byproduct.** The challenge demands
+   commitments linked to audio offsets and a call brief. A cascade produces timestamped
+   text as its natural intermediate; speech-to-speech makes us ask for it separately.
+
+**Cost:** more moving parts and more latency than one hop — roughly STT endpoint +
+model + TTS first-byte rather than a single round-trip. Mitigated by streaming every
+stage and by mu-law 8 kHz end to end, so nothing resamples.
+
+**Would change if:** our own barge-in measures worse on a real line than Realtime's, or
+cascade latency lands somewhere a dispatcher reads as dead air. Both are measurable on
+a real call, and that measurement is the trigger — not a preference.
+
+## D8 — The mandate figures are rendered into the prompt, and never spoken
+
+**Decided:** the price ceiling and target for the operation go into the system prompt,
+under a block that forbids ever saying them out loud. `agent/context.py` carries them;
+`prompts.py` renders them.
+
+**Beat:** (a) keeping them out entirely, so the agent proposes blind and learns the answer
+only from `policy.evaluate()`; (b) giving it a target but not the ceiling.
+
+**Why:** an agent that cannot tell a number worth pushing on from one that is not either
+accepts the first quote or argues with every quote. Both look bad on a call, and the
+demo is a negotiation. Option (a) is the safer design and it stays the fallback.
+
+**Cost, stated plainly:** a prompt is text a counterparty can argue with, and a persistent
+one can talk a figure out of a model. Two things contain that, and neither may be removed:
+the prompt forbids saying the figures, and `policy/` still decides every proposal — so a
+leaked ceiling is an embarrassment, not an authorization. Invariant #2 is untouched: the
+mandate is still immutable from inside the call, because nothing the model says can write
+it.
+
+**Would change if:** a figure leaks on a live call, or a judge extracts one. The fix then
+is to stop rendering it — not to add another sentence asking the model more nicely.

@@ -25,6 +25,67 @@ invented timestamps is worse than no log, because the ordering lies silently.
 
 ---
 
+## 2026-08-29T17:36-0500 · agent, domain · Nacho/claude
+The system prompt is no longer one hardcoded string. `domain.CompanyProfile` (new — the
+dashboard's pre-registration) and `agent.CallContext` compose it per call:
+`build_system_prompt(profile, context)`, `build_greeting(...)`, `recovery_line(...)`,
+`escalation_line(...)`. Four phases — RFQ, AWARD, RENEGOTIATION, INBOUND — each get their
+own block over a shared core. `build_agent(..., instructions=...)` is keyword-only and
+defaults to the demo lane, so nothing downstream changed yet. The mandate ceiling and
+target are now rendered into the prompt, marked never-say: a deliberate trade, see
+DECISION_LOG D8; `policy/` is still the only thing that authorizes anything.
+→ Affects: whoever wires `voice/session.py` to a real operation — pass the composed
+prompt and greeting instead of the module-level `SYSTEM_PROMPT` / `GREETING`. Físico:
+`domain/Operation` and `domain/Mandate` should map *into* `CallContext`, not replace it.
+
+## 2026-08-29T14:25-0500 · agent, voice · Nacho/claude
+`build_agent(model, api_key, tools=None)` — the key is now a required argument. It has to
+be: pydantic-settings loads `.env` into a `Settings` object and never exports to
+`os.environ`, so any library that reads the environment itself sees nothing, and the SDK
+did. That failed only once a real call reached the model. Also `AudioSource` gained a
+`call_id` property, and SDK tracing is off — it uploads what was said on the call.
+→ Affects: whoever picks up `agent/` and `tools/`. Call `build_agent` with the key.
+  Model settings are tuned for the phone (minimal reasoning, low verbosity, 12s timeout):
+  at its defaults `gpt-5-mini` took nine seconds to answer, which on a call is a hang-up.
+  If you change `OPENAI_AGENT_MODEL` to a non-reasoning model, drop the `reasoning=` field.
+
+## 2026-08-29T14:02-0500 · scripts · Nacho/claude
+`uv run python -m scripts.point_number` repoints the Twilio number at whatever tunnel is
+running and writes `PUBLIC_BASE_URL` into `.env`, so the server and the webhook cannot
+disagree. Run it every time the tunnel restarts — a stale webhook raises nothing, calls
+just 404 and the caller hears silence.
+→ Affects: everyone who tests by phone. **Windows Defender blocks ngrok as unwanted
+  software** — it silently deletes the binary mid-install, which looks like a broken scoop
+  shim. Use cloudflared instead: `scoop install cloudflared`, then
+  `cloudflared tunnel --url http://localhost:8000 --metrics localhost:20241`. No account,
+  no authtoken. The script finds either tunnel, or takes `--url`.
+
+## 2026-08-29T13:45-0500 · voice, agent, telephony · Nacho/claude
+The voice pipeline is live end to end: Deepgram STT → OpenAI (Agents SDK) → Deepgram TTS,
+with turn-taking and barge-in. `/twilio/media` now runs the agent; the echo diagnostic moved
+to `/twilio/voice/echo`. New in `agent/`: `build_agent(model, tools=[])` and the system
+prompt — it deliberately contains **no** price cap, window or permission (that is `policy/`).
+`tools=` is already a parameter, so wiring `propose_*` tools needs no change to the audio path.
+Adds `openai-agents` and `python-multipart`.
+→ Affects: whoever owns `agent/` and `tools/`. The prompt in `agent/prompts.py` is yours to
+  rewrite — keep authorization out of it. `tools/` plugs into `build_agent(tools=[...])`.
+  `uv sync` after pulling. `uv run python -m scripts.sim_call --scenario boss_approved`
+  replays a hostile call with no PSTN leg and no cost — add scenarios there, not by dialling.
+
+## 2026-08-29T13:15-0500 · voice, telephony, config · Nacho/claude
+`realtime/` is now `voice/`. We are not using OpenAI's Realtime API — the voice path is a
+cascade (Deepgram STT → OpenAI via the Agents SDK → Deepgram TTS) that we orchestrate, so
+that barge-in is our code and STT/TTS vendors are swappable. Reasoning in
+`docs/DECISION_LOG.md` D7. `ALLOWED` in `tests/test_layering.py` renames the `realtime`
+row to `voice` and repoints `telephony`. `config.py` drops `OPENAI_REALTIME_MODEL` (now
+orphaned) and adds `OPENAI_AGENT_MODEL`, the Deepgram keys, provider/model selection, and
+six `VAD_*` tunables.
+→ Affects: everyone. `git pull` will leave you with a stale empty `app/realtime/` —
+  delete it. Re-copy `backend/.env.example` to `.env`: the speech and VAD keys are new and
+  `OPENAI_REALTIME_MODEL` is gone. If you were about to import `app.realtime`, it is
+  `app.voice`. Audio is mu-law 8 kHz end to end — do not add a resampling step without
+  reading `voice/frames.py` first.
+
 ## 2026-08-29T12:19-0500 · repo-wide · Diego/claude
 Initial project structure: `backend/` (FastAPI, uv, 10 packages + `domain/` leaf),
 `dashboard/` (Vite + React), `supabase/`, and `docs/ARCHITECTURE.md` justifying every
