@@ -37,6 +37,12 @@ DECISION_LOG D8; `policy/` is still the only thing that authorizes anything.
 → Affects: whoever wires `voice/session.py` to a real operation — pass the composed
 prompt and greeting instead of the module-level `SYSTEM_PROMPT` / `GREETING`. Físico:
 `domain/Operation` and `domain/Mandate` should map *into* `CallContext`, not replace it.
+## 2026-08-29T17:03-0500 · voice/data/security · Person 2/Codex
+Human-approved D43/D-13B: play a deterministic notice that calls are monitored and transcribed
+for audit, with transcripts retained one year; do not ask for or infer consent.
+→ Affects: Person 1/2/3. Never call this audio recording, prevent notice bypass, record delivery
+  evidence, and block unsupported jurisdictions pending applicable legal review.
+
 ## 2026-08-29T16:59-0500 · voice/data/security · Person 2/Codex
 Human-approved D42/D-13A: Volta stores transcripts and linked audit metadata for one year,
 but captures and stores no call audio.

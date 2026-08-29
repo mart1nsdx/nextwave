@@ -2996,3 +2996,70 @@ content cannot alter a mandate, policy result, or commitment state.
 **Would change if:** applicable legal obligations, an approved legal hold, customer contractual
 requirements, or validated risk analysis require a different period. Any exception must be
 explicitly authorized, scoped, auditable, and must not silently introduce audio recording.
+
+## D43 / Person 2 D-13B — Explicit transcription notice without consent gate
+
+**Status:** APPROVED
+
+**Approved by:** Person 2 / human decision owner
+
+**Approved at:** 2026-08-29T17:03-05:00
+
+**Context:** D42 retains call transcripts for one year but prohibits audio recording. The called
+party must receive a clear disclosure, while the decision owner does not want the automated flow
+to request or depend on affirmative consent.
+
+**Alternatives considered:**
+
+- **A — Notice plus affirmative consent.** Stronger proof of agreement but adds a consent gate and
+  prevents the requested notice-only call flow.
+- **B — Explicit notice without consent gate.** Discloses actual processing and retention without
+  asking a consent question or interpreting continued participation as authorization.
+- **C — Depend on external contracts or customer representations.** Less call friction but Volta
+  cannot deterministically prove that the called party received the disclosure.
+- **D — No notice.** Simplest flow but hides material data processing and increases privacy,
+  trust, and deployment risk.
+
+**Decided:** Alternative B. Before substantive negotiation, Volta plays a deterministic notice
+that the call is being monitored and transcribed for audit purposes and that the transcript is
+retained for one year. Volta does not ask for consent, classify a response as consent, or require
+consent to proceed under this product policy.
+
+**Required wording semantics:** the notice must describe transcription, not audio recording.
+Because D42 prohibits capturing or storing audio, saying "this call is recorded" would be
+factually false. The exact localized script may vary only if it preserves: (1) monitoring and
+transcription are occurring, (2) the audit purpose, and (3) the one-year transcript retention.
+
+**Why:** B implements the requested low-friction disclosure while keeping the system honest about
+the actual data modality. Deterministic playback avoids relying on the model to remember, alter,
+or omit the notice.
+
+**Trade-off accepted:** notice without affirmative consent may be insufficient in some deployment
+jurisdictions, contractual contexts, or customer policies. This architecture decision is not a
+legal conclusion. Deployment remains blocked wherever verified applicable requirements demand
+consent or different wording until a compliant, separately approved policy is implemented.
+
+**Implementation contract:**
+
+- A trusted call-state component, not either model, selects and plays the complete notice before
+  substantive negotiation or use of transcript content for negotiation decisions.
+- Record notice script ID/version, language, start/completion timestamps, call/session ID, and
+  delivery result. Do not store a fabricated consent event or infer consent from continued speech.
+- If delivery fails, is interrupted, or cannot be verified complete, do not start substantive
+  automated negotiation; retry the complete notice once or end/escalate without a pre-agreement.
+- Caller speech, model instructions, carrier requests, and prompt injection cannot skip, shorten,
+  contradict, or mark the notice complete.
+- The notice is not a mandate mutation, identity proof, pre-agreement confirmation, commitment,
+  waiver, or authorization for any unrelated data use.
+- Legal review must determine supported jurisdictions, languages, caller/called-party rules, and
+  any contexts requiring consent before production deployment. Unsupported or unknown contexts
+  fail closed rather than silently applying this notice-only baseline.
+
+**Verification:** NOT RUN. Required evidence includes notice before substantive negotiation;
+exact semantic fields in every supported localization; interruption and delivery failure; one
+complete retry; model/caller attempts to skip or rewrite it; absence of consent records; no audio
+recording; correct one-year wording; and proof that notice completion grants no policy authority.
+
+**Would change if:** legal review, carrier contracts, customer policy, or supported-jurisdiction
+requirements demand affirmative consent or different disclosures. Such a change must be explicit,
+jurisdiction-scoped, versioned, and tested; the model cannot choose the applicable regime.
