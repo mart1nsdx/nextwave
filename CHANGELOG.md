@@ -37,6 +37,12 @@ DECISION_LOG D8; `policy/` is still the only thing that authorizes anything.
 → Affects: whoever wires `voice/session.py` to a real operation — pass the composed
 prompt and greeting instead of the module-level `SYSTEM_PROMPT` / `GREETING`. Físico:
 `domain/Operation` and `domain/Mandate` should map *into* `CallContext`, not replace it.
+## 2026-08-29T16:43-0500 · identity/notify/policy/security · Person 2/Codex
+Human-approved D36/D-04K: recap/commitment recipients resolve only from a versioned carrier
+directory; new/changed contacts need owner approval plus a mailbox-control challenge.
+→ Affects: everyone. Model/call addresses are proposals only; send by verified contact ID/version,
+  recheck before dispatch, prevent header injection, support revocation, and isolate tenants.
+
 ## 2026-08-29T16:38-0500 · notify/identity/security · Person 2/Codex
 Human-approved D35/D-04J: carrier-facing Resend email uses an existing team-controlled
 domain or delegated subdomain; the exact domain remains unresolved and must not be invented.

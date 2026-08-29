@@ -2435,3 +2435,97 @@ fail-closed behavior after verification or alignment loss.
 **Would change if:** no suitable existing domain is available or its owner rejects delegation.
 Then a dedicated purchase or another organizational domain requires its own ownership, USD cost,
 privacy, DNS, recovery, and reputation decision; personal identity is not an automatic fallback.
+
+## D36 / Person 2 D-04K — Verified carrier directory with controlled email onboarding
+
+**Status:** APPROVED
+
+**Approved by:** Person 2 / human decision owner
+
+**Approved at:** 2026-08-29T16:43-05:00
+
+**Context:** D31–D35 require recap and official commitment emails, but a recipient extracted
+from speech, transcript, quotation text, or model output can be wrong or attacker-controlled.
+Volta needs a deterministic trust source that also permits onboarding a new carrier contact.
+
+**Alternatives considered:**
+
+- **A — Verified carrier directory with controlled onboarding.** Use an existing owner-approved
+  contact; new/changed addresses require dashboard owner approval plus mailbox-control challenge.
+- **B — Pre-registered addresses only.** Strong and simple but prevents new-carrier commitment
+  until a separate administrative process finishes.
+- **C — Mailbox challenge only.** Proves mailbox control but not authority to act for the carrier.
+- **D — Address stated during the call.** Convenient but vulnerable to transcription error,
+  prompt injection, misdirection, spoofing, and unauthorized disclosure.
+
+**Decided:** Alternative A. Every recap or commitment recipient must resolve from a tenant-
+scoped, versioned carrier contact record. Existing verified records are created/approved by
+the authenticated mandate owner or an approved carrier-directory administrator. A proposed
+new or changed email address remains `UNVERIFIED` until the owner approves its association
+with the exact carrier and the mailbox successfully completes a single-use ownership challenge.
+Only then may trusted code mark it eligible. The model may extract/propose an address as
+untrusted evidence but cannot create, approve, challenge, verify, select, or mutate a contact.
+
+**Why:** A prevents caller/model-controlled addressing while retaining a practical path for
+new carriers. It separates two different claims: the owner vouches for carrier association;
+the challenge proves control of the destination mailbox.
+
+**Trade-off accepted:** the two-step process adds delay, email quota, delivery dependency,
+administrative workload, and possible inability to commit during the initial call. It still
+does not prove the contact's legal authority to bind the carrier or protect against a
+compromised mailbox/domain.
+
+**Cost and quota contract:**
+
+- Verification messages use the single D33/D34 Resend Free quota and must be counted separately
+  from recaps and commitments. They cannot consume quota reserved for official commitments.
+- Baseline provider subscription remains USD 0 within combined limits. There is no automatic
+  SMS/phone validation, third-party enrichment, domain-intelligence purchase, or paid fallback.
+- Staff verification time, carrier coordination, bounced challenges, privacy handling, and
+  directory maintenance are operational costs even when no provider fee is incurred.
+
+**Implementation contract:**
+
+- A carrier record has immutable ID/tenant, canonical legal/display identity, approved aliases,
+  status, provenance, and version. A contact record binds canonicalized email to carrier ID,
+  role/purpose, status, owner approver/evidence, mailbox-challenge evidence, timestamps,
+  revocation, and version; never use email address as the carrier primary key.
+- Normalize email conservatively for comparison without assuming provider-specific dot/plus
+  equivalence. Preserve the exact delivery form. Reject control characters, CR/LF, comments,
+  multiple addresses, display-name injection, invalid IDNA/domain syntax, and unsafe lengths.
+- A model/call-extracted address creates at most a typed `CONTACT_PROPOSAL` containing source
+  evidence and confidence/ambiguity; it cannot become a Resend recipient or directory record.
+- Owner approval occurs only in the authenticated dashboard with canonical carrier/contact
+  diff and D23–D25 fresh TOTP transaction confirmation. It binds the proposed address to one
+  tenant/carrier and does not itself mark mailbox control verified.
+- Mailbox challenge content is a fixed non-binding verification template. Use a cryptographically
+  random, hashed-at-rest, single-purpose token bound to tenant/carrier/contact/version/address,
+  issuing actor/session, issue/expiry, nonce, and unused state. Exact lifetime/attempt policy
+  remains a separate approval.
+- Challenge completion proves access to that mailbox only. It cannot accept a pre-agreement,
+  commitment, mandate, terms, payment, or legal-authority claim and cannot modify another field.
+- Atomically consume a valid challenge and record both requirements before transitioning
+  `UNVERIFIED -> VERIFIED`. Wrong/expired/replayed/cross-tenant/cross-contact tokens fail closed.
+- At every recap/commitment preparation and immediately before dispatch, resolve the exact
+  current verified contact version server-side and recheck active carrier/contact status,
+  tenant, permitted message type/role, revocation, domain/address, and selected candidate.
+  Stale or changed contacts invalidate preparation.
+- Never accept `To`, `CC`, `BCC`, reply-to, display name, or carrier address in the send API.
+  The command carries only the verified contact ID/version; the trusted adapter resolves headers.
+- Revocation is immediate for new sends and audited. It does not erase historical messages.
+  Pending/unknown commitment operations using the contact are blocked and escalated.
+- Minimize and protect directory PII with approved access, encryption, audit, export, retention,
+  correction, and deletion rules. UI/API responses mask addresses where full disclosure is
+  unnecessary; never expose cross-tenant existence through errors or challenge behavior.
+
+**Verification:** NOT RUN. Required evidence includes existing/new/changed contacts,
+owner/non-owner and mailbox-only cases, malformed/Unicode/confusable/CRLF/multi-address input,
+model/caller proposals, wrong/expired/replayed/cross-tenant tokens, concurrent approval and
+challenge, contact change/revocation before send, wrong message-role use, header injection,
+quota reservation, enumeration resistance, PII masking, immutable history, and proof that send
+commands cannot directly address email.
+
+**Would change if:** a carrier registry, contractual onboarding process, or enterprise identity
+provider supplies stronger authorization evidence. It may replace or augment the owner step only
+after provenance, legal authority, privacy, cost, revocation, and failure behavior are approved;
+mailbox control alone remains insufficient.
