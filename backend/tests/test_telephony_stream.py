@@ -148,11 +148,13 @@ def test_voice_webhook_hands_the_call_to_our_socket(monkeypatch: pytest.MonkeyPa
 
     from app.config import get_settings
     from app.main import create_app
+    from app.repo import InMemoryTranscriptStore
 
     monkeypatch.setenv("PUBLIC_BASE_URL", "https://volta-demo.ngrok.app")
     get_settings.cache_clear()
     try:
-        client = TestClient(create_app())
+        # Force the in-memory store: a real .env must never make the suite write to Supabase.
+        client = TestClient(create_app(store=InMemoryTranscriptStore()))
         response = client.post(
             "/twilio/voice",
             data={"CallSid": CALL_SID, "From": "+523312345678", "To": "+523398765432"},

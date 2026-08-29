@@ -25,6 +25,12 @@ invented timestamps is worse than no log, because the ordering lies silently.
 
 ---
 
+## 2026-08-29T18:55-05 · tests · Martin/claude
+`test_voice_webhook_hands_the_call_to_our_socket` now forces `InMemoryTranscriptStore`.
+With a real `backend/.env` present it was building a live Supabase client and its
+`/twilio/voice` POST wrote a `call_cases` row to the shared project on every `pytest` run.
+→ Affects: nobody. If you saw stray `CA0123456789abcdef` rows in Supabase, this was why.
+
 ## 2026-08-29T18:51-05 · scripts · Martin/claude
 New `backend/scripts/award_from_recaps.py`: post-processing tool that reads the
 `call_recaps` of one RFQ, normalises each carrier's quote (LLM extraction, never
