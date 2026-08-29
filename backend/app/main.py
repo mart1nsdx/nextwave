@@ -1,14 +1,8 @@
-"""FastAPI composition root. The only module allowed to import from anywhere.
-
-Wiring lives here so that every other package stays independently testable. This file
-assembles the call-evidence path: Twilio audio -> Deepgram transcription -> ledger ->
-Supabase, and the post-call recap/brief/email that a dashboard and a policy step read back.
-"""
-
-from __future__ import annotations
+"""FastAPI composition root for the call-evidence and post-call report path."""
 
 import logging
 
+import structlog
 from fastapi import FastAPI, HTTPException
 
 from app.agent import OpenAIRecapModel, build_brief, build_recap
@@ -18,122 +12,107 @@ from app.domain.models import (
     CallCase,
     Recap,
     RecapContext,
-    RecapDelivery,
-    RecapDeliveryStatus,
+    Speaker,
     TranscriptEvent,
     TranscriptTrack,
 )
-from app.domain.ports import RecapModel, RecapSender, TranscriptStore
+from app.domain.ports import RecapModel, TranscriptStore
 from app.ledger import EvidenceLedger
-from app.notify import NullRecapSender, SendGridRecapSender
-from app.realtime import RealtimeTranscriber
 from app.repo import InMemoryTranscriptStore, SupabaseTranscriptStore
-from app.telephony import create_twilio_router
+from app.telephony.router import create_router
 
-logger = logging.getLogger("volta.main")
+log = structlog.get_logger(__name__)
+
+
+def configure_logging() -> None:
+    structlog.configure(
+        processors=[
+            structlog.processors.add_log_level,
+            structlog.processors.TimeStamper(fmt="%H:%M:%S"),
+            structlog.dev.ConsoleRenderer(),
+        ],
+        wrapper_class=structlog.make_filtering_bound_logger(logging.INFO),
+        cache_logger_on_first_use=True,
+    )
 
 
 class RecapService:
-    """Post-call analysis and delivery. Composition-level: it is the only thing that needs
-    the ledger, the agent, and notify at once, and none of those may import another."""
+    """Generates reports from stored evidence. It never creates a commitment."""
 
-    def __init__(
-        self,
-        ledger: EvidenceLedger,
-        store: TranscriptStore,
-        model: RecapModel,
-        sender: RecapSender,
-        *,
-        default_to_email: str = "",
-    ) -> None:
+    def __init__(self, ledger: EvidenceLedger, store: TranscriptStore, model: RecapModel) -> None:
         self._ledger = ledger
         self._store = store
         self._model = model
-        self._sender = sender
-        self._default_to_email = default_to_email
 
-    async def run(
-        self,
-        call_sid: str,
-        *,
-        context: RecapContext | None = None,
-        to_email: str | None = None,
-    ) -> Recap | None:
+    async def run(self, call_sid: str, *, context: RecapContext | None = None) -> Recap | None:
         transcript = await self._ledger.transcript_text(call_sid)
         if not transcript.strip():
-            logger.info("no transcript for call=%s; recap skipped", call_sid)
+            log.warning("recap_skipped_without_evidence", call_id=call_sid)
             return None
-
         recap = await build_recap(call_sid, transcript, self._model, context=context)
         brief = await build_brief(call_sid, transcript, self._model)
         await self._store.save_recap(recap)
         await self._store.save_brief(brief)
-
-        delivery = await self._sender.send(recap, to_email or self._default_to_email)
-        await self._store.set_recap_delivery(delivery)
-        if delivery.status is RecapDeliveryStatus.SENT:
-            logger.info("recap emailed call=%s to=%s", call_sid, delivery.to_email)
-        else:
-            logger.warning("recap delivery failed call=%s error=%s", call_sid, delivery.error)
         return recap
 
 
 def _build_store(settings: Settings) -> TranscriptStore:
-    if settings.supabase_url and settings.supabase_service_role_key:
+    if settings.supabase_url and settings.supabase_secret_key:
         return SupabaseTranscriptStore(settings)
-    logger.warning("SUPABASE_* not set — using in-memory store (evidence is not persisted)")
+    log.warning("supabase_unconfigured_using_memory_store")
     return InMemoryTranscriptStore()
-
-
-def _build_sender(settings: Settings) -> RecapSender:
-    if settings.sendgrid_api_key and settings.recap_from_email:
-        return SendGridRecapSender(settings)
-    logger.warning("SENDGRID_API_KEY / RECAP_FROM_EMAIL not set — recap email disabled")
-    return NullRecapSender()
 
 
 def create_app(
     settings: Settings | None = None,
     store: TranscriptStore | None = None,
     recap_model: RecapModel | None = None,
-    recap_sender: RecapSender | None = None,
 ) -> FastAPI:
+    configure_logging()
     settings = settings or get_settings()
     store = store or _build_store(settings)
     ledger = EvidenceLedger(store)
     recap_model = recap_model or OpenAIRecapModel(
-        settings.openai_api_key, settings.openai_recap_model
+        settings.openai_api_key,
+        settings.openai_recap_model or settings.openai_agent_model,
     )
-    recap_sender = recap_sender or _build_sender(settings)
-    recap_service = RecapService(
-        ledger, store, recap_model, recap_sender, default_to_email=settings.recap_to_email
-    )
+    recap_service = RecapService(ledger, store, recap_model)
+    sequence_by_call: dict[str, int] = {}
 
-    def make_transcriber(call_sid: str, track: TranscriptTrack) -> RealtimeTranscriber:
-        async def sink(event: TranscriptEvent) -> None:
-            await ledger.record_event(event)
-
-        return RealtimeTranscriber(
-            api_key=settings.deepgram_api_key,
-            model=settings.deepgram_model,
-            language=settings.deepgram_language,
-            call_sid=call_sid,
+    async def persist_final(
+        call_sid: str,
+        track: TranscriptTrack,
+        speaker: Speaker,
+        offset_ms: int,
+        text: str,
+    ) -> None:
+        if not call_sid:
+            log.error("transcript_without_call_id")
+            return
+        if call_sid not in sequence_by_call:
+            sequence_by_call[call_sid] = len(await ledger.transcript(call_sid))
+        sequence_by_call[call_sid] += 1
+        await ledger.record_segment(
+            call_sid,
             track=track,
-            on_event=sink,
+            sequence_number=sequence_by_call[call_sid],
+            audio_offset_ms=offset_ms,
+            text=text,
+            is_final=True,
+            speaker=speaker,
         )
 
-    async def on_call_completed(call_sid: str) -> None:
-        await recap_service.run(call_sid)
+    async def complete_call(call_sid: str) -> None:
+        try:
+            await recap_service.run(call_sid)
+        except Exception:
+            # A report failure must be visible and must never manufacture a commitment.
+            log.exception("recap_generation_failed", call_id=call_sid)
 
     application = FastAPI(title="Volta", version="0.1.0")
     application.state.recap_service = recap_service
     application.include_router(
-        create_twilio_router(
-            settings,
-            store=store,
-            make_transcriber=make_transcriber,
-            on_call_completed=on_call_completed,
-        )
+        create_router(settings, store, complete_call, persist_final)
     )
 
     @application.get("/health")
@@ -165,18 +144,11 @@ def create_app(
             raise HTTPException(status_code=404, detail="brief not generated")
         return brief
 
-    @application.get("/calls/{call_sid}/recap-delivery")
-    async def get_recap_delivery(call_sid: str) -> RecapDelivery:
-        delivery = await store.get_recap_delivery(call_sid)
-        if delivery is None:
-            raise HTTPException(status_code=404, detail="recap not yet processed")
-        return delivery
-
     @application.post("/calls/{call_sid}/recap")
-    async def regenerate_recap(call_sid: str, to_email: str | None = None) -> Recap:
+    async def regenerate_recap(call_sid: str) -> Recap:
         if await store.get_case(call_sid) is None:
             raise HTTPException(status_code=404, detail="call not found")
-        recap = await recap_service.run(call_sid, to_email=to_email)
+        recap = await recap_service.run(call_sid)
         if recap is None:
             raise HTTPException(status_code=409, detail="no transcript to summarize")
         return recap

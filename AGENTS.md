@@ -94,7 +94,7 @@ backend/app/                                                    # listed bottom-
   agent/        # prompts, negotiation guidance, proposal extraction       → Físico/Admin
   market/       # RFQ orchestration, feasibility filter, award selection   → Físico/Admin
   tools/        # function-calling surface exposed to the model            → Sistemas
-  realtime/     # OpenAI Realtime session, tool dispatch, turn handling    → Mecatrónica/Sistemas
+  voice/        # STT+LLM+TTS pipeline, VAD, turn handling, barge-in      → Mecatrónica/Sistemas
   telephony/    # Twilio webhooks, Media Streams, barge-in, warm transfer  → Mecatrónica
   main.py       # composition root: app factory, router mounting
   config.py     # settings — the only reader of os.environ
@@ -174,7 +174,7 @@ while I was heads down?"
 ## Secrets
 
 `.env` is gitignored and never committed. `backend/.env.example` is the authoritative list of
-keys, with empty values and a note on each. The Supabase service-role key stays server-side —
+keys, with empty values and a note on each. The Supabase secret key stays server-side —
 never in `dashboard/`. If a key is committed, rotate it immediately and tell the team.
 
 ## Working agreements for agents
@@ -182,11 +182,11 @@ never in `dashboard/`. If a key is committed, rotate it immediately and tell the
 - **Ask before assuming.** If the task is underspecified in a way that changes the design, ask
   one specific question instead of guessing. Coding agents almost never interrupt on their own;
   do it here.
-- **Verify APIs against current docs.** Twilio and OpenAI Realtime both changed recently and
-  most tutorials online are stale. Notably, OpenAI's **Realtime API beta interface was removed
-  on 2026-05-12** — sample code using the old beta header or `gpt-4o-realtime-preview` will not
-  work. Current realtime models are `gpt-realtime`, `gpt-realtime-2`, `gpt-realtime-2.1`
-  (verify before pinning). Do not invent function names or parameters; check or say you're unsure.
+- **Verify APIs against current docs.** Twilio and the speech vendors all changed recently and
+  most tutorials online are stale. Note that Volta does **not** use OpenAI's Realtime API — the
+  voice path is a cascade (STT → LLM → TTS), see `docs/DECISION_LOG.md` D7 — so Realtime sample
+  code does not apply here at all. Model ids for every layer live in `.env`, never in source.
+  Do not invent function names or parameters; check or say you're unsure.
 - **Evidence over summaries.** Quote actual test output and log lines. Never report "tests pass"
   without having run them.
 - **Smallest change that works.** No speculative abstractions, no TODOs in code, no

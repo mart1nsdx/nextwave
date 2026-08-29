@@ -31,8 +31,8 @@ ALLOWED: dict[str, set[str]] = {
     "agent": {"domain"},
     "market": {"domain", "policy", "repo", "ledger"},
     "tools": {"domain", "policy", "repo", "ledger", "market", "notify"},
-    "realtime": {"domain", "config", "agent", "tools"},
-    "telephony": {"domain", "config", "realtime"},
+    "voice": {"domain", "config", "agent", "tools"},
+    "telephony": {"domain", "config", "voice"},
 }
 
 # The composition root wires everything together; that is its whole job.
@@ -103,7 +103,14 @@ def test_every_package_declares_its_contract() -> None:
     This is the point where adding a package becomes a deliberate act rather than a
     side effect of someone needing somewhere to put a file.
     """
-    on_disk = {p.name for p in APP.iterdir() if p.is_dir() and not p.name.startswith((".", "_"))}
+    # A directory counts as a package only if it actually holds Python. Removing a
+    # package leaves its __pycache__ behind, and an empty husk of a deleted package
+    # should not fail the architecture check on everyone who switches branches.
+    on_disk = {
+        p.name
+        for p in APP.iterdir()
+        if p.is_dir() and not p.name.startswith((".", "_")) and any(p.glob("*.py"))
+    }
     declared = set(ALLOWED) - {"__root__"}
     assert on_disk <= declared, (
         f"Undeclared package(s): {sorted(on_disk - declared)}. "

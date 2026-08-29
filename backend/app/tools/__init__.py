@@ -1,7 +1,7 @@
 """The function-calling surface exposed to the model. The composition layer.
 
 MAY IMPORT:  domain, policy, repo, ledger, market, notify.
-IMPORTED BY: realtime.
+IMPORTED BY: voice.
 
 Deliberately the widest node in the graph: this is where a model-proposed action meets
 policy.evaluate(). One directory answers "what can the model do?" via `ls`.

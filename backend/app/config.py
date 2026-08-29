@@ -1,13 +1,10 @@
 """Settings. The only module in the codebase that reads the environment.
 
 MAY IMPORT:  stdlib, pydantic-settings. Nothing from app.
-IMPORTED BY: repo, notify, realtime, telephony, main.
+IMPORTED BY: repo, notify, voice, telephony, main.
 
 A leaf, like domain/. Centralised so that a missing key fails loudly at startup rather
 than three hours later, mid-call, when the recap tries to send.
-
-Scope: the call -> transcript -> Supabase -> recap -> email path. Other modules add
-their own keys here as they need them (outbound Twilio, the voice agent, escalation).
 """
 
 from functools import lru_cache
@@ -18,37 +15,57 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    # Twilio: inbound webhook signature + Media Streams. Only the auth token is needed
-    # to validate; the account SID and outbound number belong to the outbound-call path.
+    # --- Telephony (Twilio) ---
+    twilio_account_sid: str = ""
     twilio_auth_token: str = ""
-    # When set, the inbound call is bridged to this number so both legs have audio.
-    forward_to_number: str = ""
-    # Only false while testing a local tunnel. Always true in production.
+    twilio_phone_number: str = ""
     validate_twilio_signature: bool = True
 
-    # Deepgram: streaming speech-to-text. Takes Twilio's mu-law 8 kHz directly.
-    deepgram_api_key: str = ""
-    deepgram_model: str = "nova-3"
-    # "multi" lets the model code-switch (Spanish/English on the same call).
-    deepgram_language: str = "multi"
-
-    # OpenAI: the recap + brief chat model (structured outputs). "gpt-5.6" is OpenAI's
-    # current API recommendation (Aug 2026); override in .env if that has moved again.
+    # --- Reasoning (OpenAI, via the Agents SDK) ---
     openai_api_key: str = ""
-    openai_recap_model: str = "gpt-5.6"
+    # Not hardcoded: model ids move, and most tutorials online are stale. Verify the
+    # current fast model id against OpenAI's docs before filling this in.
+    openai_agent_model: str = ""
+    openai_recap_model: str = ""
 
-    # SendGrid (Twilio Email): delivers the written recap. A commitment does not count
-    # until this send succeeds (AGENTS.md invariant #3).
+    # --- Speech ---
+    deepgram_api_key: str = ""
+    # "deepgram" | "fake". The fake providers are how sim_call and the test suite run
+    # the whole pipeline with no network and no cost.
+    stt_provider: str = "deepgram"
+    stt_model: str = "nova-3"
+    # "multi" enables ES/EN code-switching within a single utterance, which the judge
+    # is likely to do. A single-language code (es, en) is the alternative.
+    stt_language: str = "multi"
+    # Aliases for the post-call evidence path. They default to the live STT settings.
+    deepgram_model: str = "nova-3"
+    deepgram_language: str = "multi"
+    tts_provider: str = "deepgram"
+    # Aura-2 voices that switch between English and Spanish: aquila, carina, diana,
+    # javier, selena. Use aura-2-estrella-es for Mexican-accented Spanish only.
+    tts_model: str = "aura-2-carina-es"
+
+    # --- Turn-taking / VAD ---
+    # Two different questions, answered by two different mechanisms. See voice/vad.py.
+    # Turn end (did they *finish*?) is the speech vendor's endpointer: it needs
+    # linguistic accuracy and can afford a network round-trip.
+    vad_endpointing_ms: int = 100  # Deepgram's recommended value for code-switching
+    vad_utterance_end_ms: int = 1000
+    # Barge-in (did they *start* while we were talking?) is local, because a round-trip
+    # here means the agent talks over the counterparty for a third of a second.
+    vad_barge_in_enabled: bool = True
+    vad_barge_in_rms_threshold: float = 900.0  # int16 RMS; calibrate against a real line
+    vad_barge_in_min_ms: int = 120  # consecutive voiced audio; filters coughs and line noise
+    vad_min_silence_before_reply_ms: int = 250
+
+    # --- Escalation and callbacks ---
+    supabase_url: str = ""
+    supabase_secret_key: str = ""
+    escalation_phone_number: str = ""
     sendgrid_api_key: str = ""
     recap_from_email: str = ""
     recap_from_name: str = "Volta"
-    # Default recipient when a call has no operation-level contact yet.
     recap_to_email: str = ""
-
-    supabase_url: str = ""
-    supabase_service_role_key: str = ""
-
-    # Public HTTPS domain Twilio calls back into (e.g. an ngrok URL).
     public_base_url: str = ""
 
 

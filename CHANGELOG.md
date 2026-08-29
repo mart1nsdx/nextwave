@@ -25,6 +25,19 @@ invented timestamps is worse than no log, because the ordering lies silently.
 
 ---
 
+## 2026-08-29T17:27-05 · config, repo, supabase · Codex
+Replaced the legacy `SUPABASE_SERVICE_ROLE_KEY` configuration with
+`SUPABASE_SECRET_KEY` for backend-only evidence persistence.
+→ Affects: everyone running the backend. Replace the old `.env` variable with the
+  Supabase `sb_secret_...` key; never expose it to the dashboard.
+
+## 2026-08-29T17:23-05 · supabase, domain, agent · Codex
+Added `call_recaps.agreement_candidates` as a non-null JSONB array for audio-anchored
+agreement evidence. The model writes candidates only; deterministic policy remains the
+sole future authority that can write commitments.
+→ Affects: dashboard and policy. Read the candidates from the persisted recap; never
+  treat them as `COMMITTED` without the policy and written-recap gates.
+
 ## 2026-08-29T17:12-0500 · supabase · Diego/claude
 Policy and evidence spine: 22 new tables (operations, mandates, rfqs, offers + cost
 components, commitments + transitions, evidence, policy_decisions, ledger_events,
@@ -38,46 +51,68 @@ applied to the `Execute` project, which was empty -- including the two on `marti
   works -- this reverses the RLS comment in `20260829125514` and needs martin's ack.
   Persona 1: `recordings` exists and is empty because no `<Record>` is configured anywhere.
   Reasoning in `docs/DATA_MODEL.md`.
-## 2026-08-29T14:10-0500 · domain, repo, ledger, agent, notify, realtime, telephony, main, supabase · Martin/claude
-Built the call-evidence → recap → email path and folded the standalone `apps/voice`
-service into `backend/app/` under the layering contract (`apps/voice/`, root
-`requirements.txt` and root `.env.example` deleted).
-- `domain/`: `CallCase`, `TranscriptEvent`, `Recap`, `CallBrief`, `RecapDelivery`, enums,
-  and the `TranscriptStore` / `RecapModel` / `RecapSender` / `TranscriptSink` /
-  `CallCompletedHook` ports.
-- `repo/`: `SupabaseTranscriptStore` + `InMemoryTranscriptStore` (idempotent upserts).
-- `ledger/`: `EvidenceLedger` — append-only, deterministic `event_key`, `has_audio_anchor`.
-- `realtime/`: `RealtimeTranscriber` over **Deepgram** streaming STT (`nova-3`,
-  `language=multi`) — takes Twilio mu-law 8 kHz raw, no transcode. Persistence is an
-  injected sink; realtime/ and telephony/ never import repo/ or ledger/.
-- `agent/`: `build_recap` / `build_brief` + `OpenAIRecapModel` (chat, structured outputs).
-- `notify/`: `SendGridRecapSender` (Twilio Email) + `NullRecapSender`; renders the recap
-  to a Spanish email. A send failure is `RecapDelivery(status=failed)`, never an exception.
-- `telephony/`: `create_twilio_router` — `/twilio/voice|media|stream-status|call-status`,
-  signature validation, idempotent handlers.
-- `main.py`: wiring + `RecapService` (recap → brief → email → persist delivery) + read API
-  (`GET /calls`, `/calls/{sid}/transcript|recap|brief|recap-delivery`, `POST /calls/{sid}/recap`).
-- New migration `20260829133007_add_call_numbers_and_recap.sql`: `call_cases.from_number/to_number`,
-  tables `call_recaps` / `call_briefs` / `call_recap_deliveries`. The prior migration is untouched.
-- Deps: `python-multipart` (FastAPI form parsing).
-- `config.py` now scoped to this path: added `DEEPGRAM_*`, `OPENAI_RECAP_MODEL`,
-  `SENDGRID_API_KEY`, `RECAP_FROM_EMAIL/NAME`, `RECAP_TO_EMAIL`, `FORWARD_TO_NUMBER`,
-  `VALIDATE_TWILIO_SIGNATURE`; **removed the unused `twilio_account_sid`,
-  `twilio_phone_number`, `openai_realtime_model`, `escalation_phone_number`** — re-add
-  them here when the outbound-call / voice-agent / escalation paths need them.
-- Docs: new `docs/VERIFICATION.md` is the single reference for this path (design, file
-  map, env vars, Supabase, API, runbook). `supabase/README.md` folded into it and
-  deleted; `DECISION_LOG.md` D7 tightened, D8 removed.
-→ Affects: everyone. `policy/` unchanged — this layer *produces* the evidence
-  (`ledger.has_audio_anchor`, stored recap, `call_recap_deliveries.status='sent'`) that the
-  `RECAP_SENT → COMMITTED` / `EVIDENCE_MISSING` checks read. Dashboard: read endpoints live.
-  Run `supabase db push` for the new migration; `uv sync` for `python-multipart`.
+## 2026-08-29T16:47-05 · voice, telephony, ledger, repo, agent · Codex
+The live bidirectional call now opens an evidence case, persists final caller and agent
+turns with Twilio audio offsets, and produces persisted recap and call-brief reports when
+Twilio closes the call. Report output contains audio-anchored agreement candidates only;
+it does not write commitments or send any message.
+→ Affects: dashboard and policy. Read `/calls/{call_sid}/transcript`, `/recap`, and
+  `/brief`; a later deterministic policy step must validate candidates before commitment.
 
-## 2026-08-29T13:40-0500 · verification/notify · martin/Codex
-Recorded the real-time evidence, OpenAI transcription, post-call recap, notification,
-and dashboard authority boundaries in `docs/DECISION_LOG.md`.
-→ Affects: everyone. Telephony emits timestamped evidence; realtime transcribes; notify
-  gates recap delivery; no model or dashboard path may create a commitment directly.
+## 2026-08-29T14:25-0500 · agent, voice · Nacho/claude
+`build_agent(model, api_key, tools=None)` — the key is now a required argument. It has to
+be: pydantic-settings loads `.env` into a `Settings` object and never exports to
+`os.environ`, so any library that reads the environment itself sees nothing, and the SDK
+did. That failed only once a real call reached the model. Also `AudioSource` gained a
+`call_id` property, and SDK tracing is off — it uploads what was said on the call.
+→ Affects: whoever picks up `agent/` and `tools/`. Call `build_agent` with the key.
+  Model settings are tuned for the phone (minimal reasoning, low verbosity, 12s timeout):
+  at its defaults `gpt-5-mini` took nine seconds to answer, which on a call is a hang-up.
+  If you change `OPENAI_AGENT_MODEL` to a non-reasoning model, drop the `reasoning=` field.
+
+## 2026-08-29T14:10-0500 · domain, repo, ledger, agent, notify, supabase · Martin/claude
+Added the call-evidence, post-call recap and recap-delivery building blocks, including
+the Supabase migration. The incompatible Twilio transport is adapted separately to the
+existing bidirectional voice path.
+→ Affects: everyone. Evidence and recap types are shared contracts; run the new Supabase
+  migration before enabling persisted call review.
+
+## 2026-08-29T14:02-0500 · scripts · Nacho/claude
+`uv run python -m scripts.point_number` repoints the Twilio number at whatever tunnel is
+running and writes `PUBLIC_BASE_URL` into `.env`, so the server and the webhook cannot
+disagree. Run it every time the tunnel restarts — a stale webhook raises nothing, calls
+just 404 and the caller hears silence.
+→ Affects: everyone who tests by phone. **Windows Defender blocks ngrok as unwanted
+  software** — it silently deletes the binary mid-install, which looks like a broken scoop
+  shim. Use cloudflared instead: `scoop install cloudflared`, then
+  `cloudflared tunnel --url http://localhost:8000 --metrics localhost:20241`. No account,
+  no authtoken. The script finds either tunnel, or takes `--url`.
+
+## 2026-08-29T13:45-0500 · voice, agent, telephony · Nacho/claude
+The voice pipeline is live end to end: Deepgram STT → OpenAI (Agents SDK) → Deepgram TTS,
+with turn-taking and barge-in. `/twilio/media` now runs the agent; the echo diagnostic moved
+to `/twilio/voice/echo`. New in `agent/`: `build_agent(model, tools=[])` and the system
+prompt — it deliberately contains **no** price cap, window or permission (that is `policy/`).
+`tools=` is already a parameter, so wiring `propose_*` tools needs no change to the audio path.
+Adds `openai-agents` and `python-multipart`.
+→ Affects: whoever owns `agent/` and `tools/`. The prompt in `agent/prompts.py` is yours to
+  rewrite — keep authorization out of it. `tools/` plugs into `build_agent(tools=[...])`.
+  `uv sync` after pulling. `uv run python -m scripts.sim_call --scenario boss_approved`
+  replays a hostile call with no PSTN leg and no cost — add scenarios there, not by dialling.
+
+## 2026-08-29T13:15-0500 · voice, telephony, config · Nacho/claude
+`realtime/` is now `voice/`. We are not using OpenAI's Realtime API — the voice path is a
+cascade (Deepgram STT → OpenAI via the Agents SDK → Deepgram TTS) that we orchestrate, so
+that barge-in is our code and STT/TTS vendors are swappable. Reasoning in
+`docs/DECISION_LOG.md` D7. `ALLOWED` in `tests/test_layering.py` renames the `realtime`
+row to `voice` and repoints `telephony`. `config.py` drops `OPENAI_REALTIME_MODEL` (now
+orphaned) and adds `OPENAI_AGENT_MODEL`, the Deepgram keys, provider/model selection, and
+six `VAD_*` tunables.
+→ Affects: everyone. `git pull` will leave you with a stale empty `app/realtime/` —
+  delete it. Re-copy `backend/.env.example` to `.env`: the speech and VAD keys are new and
+  `OPENAI_REALTIME_MODEL` is gone. If you were about to import `app.realtime`, it is
+  `app.voice`. Audio is mu-law 8 kHz end to end — do not add a resampling step without
+  reading `voice/frames.py` first.
 
 ## 2026-08-29T12:19-0500 · repo-wide · Diego/claude
 Initial project structure: `backend/` (FastAPI, uv, 10 packages + `domain/` leaf),

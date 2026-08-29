@@ -64,7 +64,7 @@ All env access is in `app/config.py` (the only reader). Template: `backend/.env.
 | `DEEPGRAM_API_KEY` / `DEEPGRAM_MODEL` / `DEEPGRAM_LANGUAGE` | Streaming STT (`nova-3`, `multi`) |
 | `OPENAI_API_KEY` / `OPENAI_RECAP_MODEL` | Recap + brief chat model (`gpt-5.6`) |
 | `SENDGRID_API_KEY` / `RECAP_FROM_EMAIL` / `RECAP_FROM_NAME` / `RECAP_TO_EMAIL` | Recap email; `RECAP_FROM_EMAIL` must be a verified SendGrid sender |
-| `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` | Evidence store (service-role key, backend only) |
+| `SUPABASE_URL` / `SUPABASE_SECRET_KEY` | Evidence store (secret key, backend only) |
 | `PUBLIC_BASE_URL` | Public HTTPS domain Twilio calls back into (ngrok URL) |
 
 Without `SUPABASE_*` the app falls back to an in-memory store (nothing persisted). Without
@@ -85,7 +85,7 @@ Apply — pick one:
   `supabase db push`
 - **Manual:** paste both `.sql` files into the dashboard SQL Editor, in order
 
-RLS is enabled on every table with no policies: the service-role key (backend) bypasses
+RLS is enabled on every table with no policies: the secret key (backend) bypasses
 it; a browser client with the anon key is blocked. Dashboard reads must go through the
 API below, never a direct client.
 
