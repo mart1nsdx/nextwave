@@ -31,8 +31,8 @@ ALLOWED: dict[str, set[str]] = {
     "agent": {"domain"},
     "market": {"domain", "policy", "repo", "ledger"},
     "tools": {"domain", "policy", "repo", "ledger", "market", "notify"},
-    "realtime": {"domain", "config", "agent", "tools"},
-    "telephony": {"domain", "config", "realtime"},
+    "voice": {"domain", "config", "agent", "tools"},
+    "telephony": {"domain", "config", "voice"},
 }
 
 # The composition root wires everything together; that is its whole job.

@@ -108,13 +108,13 @@ class SupabaseTranscriptStore:
     """Backed by the two migrations under supabase/migrations/."""
 
     def __init__(self, settings: Settings) -> None:
-        if not settings.supabase_url or not settings.supabase_service_role_key:
-            raise RuntimeError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set")
+        if not settings.supabase_url or not settings.supabase_secret_key:
+            raise RuntimeError("SUPABASE_URL and SUPABASE_SECRET_KEY must be set")
         # Imported here so the package has no import-time dependency on the SDK — tests
         # that only touch InMemoryTranscriptStore stay fast and offline.
         from supabase import create_client
 
-        self._db = create_client(settings.supabase_url, settings.supabase_service_role_key)
+        self._db = create_client(settings.supabase_url, settings.supabase_secret_key)
         self._case_ids: dict[str, str] = {}
 
     async def _run(self, fn: Any, *args: Any, **kwargs: Any) -> Any:
