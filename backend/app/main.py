@@ -10,6 +10,7 @@ from app.config import Settings, get_settings
 from app.domain.models import (
     CallBrief,
     CallCase,
+    HandoffReason,
     Recap,
     RecapContext,
     Speaker,
@@ -19,7 +20,9 @@ from app.domain.models import (
 from app.domain.ports import RecapModel, TranscriptStore
 from app.ledger import EvidenceLedger
 from app.repo import InMemoryTranscriptStore, SupabaseTranscriptStore
+from app.telephony.handoff import TwilioHandoff
 from app.telephony.router import create_router
+from app.tools import HandoffTool
 
 log = structlog.get_logger(__name__)
 
@@ -77,6 +80,8 @@ def create_app(
         settings.openai_recap_model or settings.openai_agent_model,
     )
     recap_service = RecapService(ledger, store, recap_model)
+    twilio_handoff = TwilioHandoff(settings, store)
+    handoff_tool = HandoffTool(store, twilio_handoff.start)
     sequence_by_call: dict[str, int] = {}
 
     async def persist_final(
@@ -109,10 +114,22 @@ def create_app(
             # A report failure must be visible and must never manufacture a commitment.
             log.exception("recap_generation_failed", call_id=call_sid)
 
+    async def request_handoff(
+        call_sid: str, reason: HandoffReason, offset_ms: int, note: str
+    ) -> bool:
+        return await handoff_tool.propose_handoff(call_sid, reason, offset_ms, note) is not None
+
     application = FastAPI(title="Volta", version="0.1.0")
     application.state.recap_service = recap_service
     application.include_router(
-        create_router(settings, store, complete_call, persist_final)
+        create_router(
+            settings,
+            store,
+            complete_call,
+            persist_final,
+            twilio_handoff,
+            request_handoff,
+        )
     )
 
     @application.get("/health")

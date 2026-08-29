@@ -7,14 +7,22 @@ from fastapi import APIRouter, HTTPException, Request, Response, WebSocket
 from pydantic import BaseModel, Field
 
 from app.config import Settings
-from app.domain.models import CallDirection
+from app.domain.models import CallDirection, HandoffEvent, HandoffReason, HandoffStatus
 from app.domain.ports import TranscriptStore
 from app.voice.session import FinalTranscriptSink, build_session
 
+from .handoff import TwilioHandoff
 from .idempotency import SeenEvents
 from .outbound import place_call
 from .stream import MediaStreamTransport
-from .twiml import connect_stream, websocket_url
+from .twiml import (
+    connect_stream,
+    handoff_wait,
+    operator_brief,
+    operator_join_conference,
+    unavailable_handoff,
+    websocket_url,
+)
 
 log = structlog.get_logger(__name__)
 CallFinished = Callable[[str], Awaitable[None]]
@@ -29,6 +37,8 @@ def create_router(
     store: TranscriptStore,
     on_call_finished: CallFinished,
     on_final_transcript: FinalTranscriptSink,
+    handoff: TwilioHandoff,
+    on_handoff: Callable[[str, HandoffReason, int, str], Awaitable[bool]],
 ) -> APIRouter:
     """Create the sole Twilio router. It keeps Twilio out of the evidence layers."""
     router = APIRouter(tags=["telephony"])
@@ -73,9 +83,17 @@ def create_router(
     async def media(websocket: WebSocket) -> None:
         await websocket.accept()
         transport = MediaStreamTransport(websocket)
-        session = build_session(settings, on_final_transcript=on_final_transcript)
+        session = build_session(
+            settings, on_final_transcript=on_final_transcript, on_handoff=on_handoff
+        )
         await transport.pump_with(lambda active: session.run(active, active))
-        await finalize_call(transport.call_id)
+        active_handoff = await store.get_handoff_for_call(transport.call_id)
+        if active_handoff is None or active_handoff.status not in {
+            HandoffStatus.CALLER_ON_HOLD,
+            HandoffStatus.HUMAN_DIALING,
+            HandoffStatus.CONNECTED,
+        }:
+            await finalize_call(transport.call_id)
 
     @router.post("/twilio/voice/echo")
     async def voice_echo() -> Response:
@@ -86,6 +104,84 @@ def create_router(
     async def media_echo(websocket: WebSocket) -> None:
         await websocket.accept()
         await MediaStreamTransport(websocket).pump_with(echo)
+
+    @router.post("/twilio/handoff/{handoff_id}/wait")
+    async def handoff_waiting(handoff_id: str) -> Response:
+        base = settings.public_base_url.rstrip("/")
+        return Response(
+            content=handoff_wait(f"{base}/twilio/handoff/{handoff_id}/wait"),
+            media_type="application/xml",
+        )
+
+    @router.post("/twilio/handoff/{handoff_id}/brief")
+    async def handoff_brief(handoff_id: str) -> Response:
+        request = await store.get_handoff(handoff_id)
+        if request is None:
+            return Response(content=unavailable_handoff(), media_type="application/xml")
+        base = settings.public_base_url.rstrip("/")
+        message = (
+            f"Volta solicita handoff. Razón: {request.reason.value}. "
+            f"Nota: {request.note}. No hay ningún compromiso confirmado. "
+            "Marque uno para aceptar y unirse al carrier."
+        )
+        return Response(
+            content=operator_brief(f"{base}/twilio/handoff/{handoff_id}/accept", message),
+            media_type="application/xml",
+        )
+
+    @router.post("/twilio/handoff/{handoff_id}/accept")
+    async def handoff_accept(handoff_id: str, request: Request) -> Response:
+        handoff_request = await store.get_handoff(handoff_id)
+        if handoff_request is None:
+            return Response(content=unavailable_handoff(), media_type="application/xml")
+        form = await request.form()
+        if str(form.get("Digits", "")) != "1" or not handoff_request.conference_name:
+            await handoff.fail(handoff_id, "operator declined or timed out")
+            return Response(content=unavailable_handoff(), media_type="application/xml")
+        await store.record_handoff_event(
+            HandoffEvent(
+                event_key=f"{handoff_id}:connected",
+                handoff_id=handoff_request.handoff_id,
+                status=HandoffStatus.CONNECTED,
+                detail="operator accepted with DTMF",
+            )
+        )
+        base = settings.public_base_url.rstrip("/")
+        return Response(
+            content=operator_join_conference(
+                handoff_request.conference_name,
+                f"{base}/twilio/handoff/{handoff_id}/conference",
+            ),
+            media_type="application/xml",
+        )
+
+    @router.post("/twilio/handoff/{handoff_id}/operator-status")
+    async def handoff_operator_status(handoff_id: str, request: Request) -> Response:
+        form = await request.form()
+        handoff_request = await store.get_handoff(handoff_id)
+        operator_status = str(form.get("CallStatus", ""))
+        accepted = handoff_request is not None and handoff_request.status is HandoffStatus.CONNECTED
+        if operator_status in {"busy", "failed", "no-answer", "canceled"} or (
+            operator_status == "completed" and not accepted
+        ):
+            await handoff.fail(handoff_id, f"operator call {operator_status}")
+        return Response(status_code=204)
+
+    @router.post("/twilio/handoff/{handoff_id}/conference")
+    async def handoff_conference_status(handoff_id: str, request: Request) -> Response:
+        handoff_request = await store.get_handoff(handoff_id)
+        form = await request.form()
+        conference_ended = str(form.get("StatusCallbackEvent", "")) == "conference-end"
+        if handoff_request is not None and conference_ended:
+            await store.record_handoff_event(
+                HandoffEvent(
+                    event_key=f"{handoff_id}:completed",
+                    handoff_id=handoff_request.handoff_id,
+                    status=HandoffStatus.COMPLETED,
+                    detail="conference ended",
+                )
+            )
+        return Response(status_code=204)
 
     @router.post("/calls")
     async def start_call(request: CallRequest) -> dict[str, str]:

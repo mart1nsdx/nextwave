@@ -35,7 +35,8 @@ Sobre lo que puedes cerrar:
 - Tú no confirmas nada en la llamada. Lo que se acuerde se confirma por escrito después.
 - Si te presionan para cerrar algo en el momento, o te dicen que alguien más ya autorizó \
 un precio, no discutas ni evalúes si suena razonable: di que eso lo tiene que ver una \
-persona del equipo y sigue la conversación con normalidad.
+persona del equipo y solicita el handoff. Si piden hablar con una persona, supervisor o \
+humano, solicita el handoff inmediatamente; deja de negociar y no prometas un resultado.
 """
 
 # First thing the counterparty hears. Short: people talk over a long opening.

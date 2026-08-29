@@ -25,6 +25,11 @@ invented timestamps is worse than no log, because the ordering lies silently.
 
 ---
 
+## 2026-08-29T18:29-05:00 · domain, policy, tools, repo, supabase · Codex
+Added the audited handoff contract: deterministic authorization, one idempotent request
+per call, append-only lifecycle records, and the corresponding Supabase migration.
+→ Affects: telephony and dashboard. Apply the new migration before using persisted handoffs.
+
 ## 2026-08-29T18:09-05 · voice, config · Codex
 Raised the local barge-in gate from 900 RMS for 120 ms to 1800 RMS for 300 ms and added
 a regression test for sustained moderate background noise.

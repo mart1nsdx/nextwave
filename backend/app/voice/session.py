@@ -22,7 +22,8 @@ from agents import TResponseInputItem
 
 from app.agent import GREETING, RECOVERY_LINE, build_agent
 from app.config import Settings
-from app.domain.models import Speaker, TranscriptTrack
+from app.domain.models import HandoffReason, Speaker, TranscriptTrack
+from app.tools import detected_handoff_reason
 
 from .events import FinalTranscript, SpeechStarted, UtteranceEnd
 from .frames import AudioSink, AudioSource
@@ -34,6 +35,7 @@ from .vad import EnergyVad, VadSettings
 log = structlog.get_logger(__name__)
 
 FinalTranscriptSink = Callable[[str, TranscriptTrack, Speaker, int, str], Awaitable[None]]
+HandoffSink = Callable[[str, HandoffReason, int, str], Awaitable[bool]]
 
 
 class Turn(Enum):
@@ -52,6 +54,7 @@ class VoiceSession:
         vad: VadSettings,
         greeting: str,
         on_final_transcript: FinalTranscriptSink | None = None,
+        on_handoff: HandoffSink | None = None,
     ) -> None:
         self._stt = stt
         self._tts = tts
@@ -59,6 +62,7 @@ class VoiceSession:
         self._vad_settings = vad
         self._greeting = greeting
         self._on_final_transcript = on_final_transcript
+        self._on_handoff = on_handoff
 
         self._turn = Turn.LISTENING
         self._history: list[TResponseInputItem] = []
@@ -69,6 +73,7 @@ class VoiceSession:
         self._voice: TtsSession | None = None
         self._log = log
         self._call_id = ""
+        self._handoff_requested = False
 
     @property
     def history(self) -> list[TResponseInputItem]:
@@ -123,8 +128,30 @@ class VoiceSession:
                         event.offset_ms,
                         event.text,
                     )
+                reason = detected_handoff_reason(event.text)
+                if (
+                    reason is not None
+                    and not self._handoff_requested
+                    and self._on_handoff is not None
+                ):
+                    self._handoff_requested = True
+                    await self._barge_in(event.offset_ms)
+                    started = await self._on_handoff(
+                        self._call_id,
+                        reason,
+                        event.offset_ms,
+                        "deterministic transcript trigger",
+                    )
+                    if not started:
+                        self._handoff_requested = False
+                        self._heard.clear()
+                        await self._speak(
+                            "No logramos conectar con una persona en este momento. "
+                            "Tomaremos el recado para que el equipo le devuelva la llamada."
+                        )
+                        await self._flush()
             elif isinstance(event, UtteranceEnd):
-                if self._heard:
+                if self._heard and not self._handoff_requested:
                     self._reply = asyncio.create_task(self._respond(event.offset_ms))
                     # Without this, a crash inside the turn is only ever reported by
                     # asyncio at shutdown as "Task exception was never retrieved", long
@@ -229,6 +256,7 @@ class VoiceSession:
 def build_session(
     settings: Settings,
     on_final_transcript: FinalTranscriptSink | None = None,
+    on_handoff: HandoffSink | None = None,
 ) -> VoiceSession:
     """Assemble a conversation from configuration. Called once per call."""
     return VoiceSession(
@@ -238,4 +266,5 @@ def build_session(
         vad=VadSettings.from_settings(settings),
         greeting=GREETING,
         on_final_transcript=on_final_transcript,
+        on_handoff=on_handoff,
     )

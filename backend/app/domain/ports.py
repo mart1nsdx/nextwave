@@ -14,6 +14,8 @@ from app.domain.models import (
     CallBrief,
     CallCase,
     CallDirection,
+    HandoffEvent,
+    HandoffRequest,
     Recap,
     RecapContext,
     RecapDelivery,
@@ -56,6 +58,26 @@ class TranscriptStore(Protocol):
     async def set_recap_delivery(self, delivery: RecapDelivery) -> None: ...
 
     async def get_recap_delivery(self, call_sid: str) -> RecapDelivery | None: ...
+
+    async def create_handoff(self, request: HandoffRequest) -> bool:
+        """Store a request once. False means this call already has a handoff."""
+
+    async def get_handoff(self, handoff_id: str) -> HandoffRequest | None: ...
+
+    async def get_handoff_for_call(self, call_sid: str) -> HandoffRequest | None: ...
+
+    async def record_handoff_event(self, event: HandoffEvent) -> None:
+        """Append an idempotent lifecycle event and advance its visible status."""
+
+    async def list_handoff_events(self, handoff_id: str) -> list[HandoffEvent]: ...
+
+    async def update_handoff_transport(
+        self,
+        handoff_id: str,
+        *,
+        conference_name: str | None = None,
+        operator_call_sid: str | None = None,
+    ) -> None: ...
 
 
 class RecapModel(Protocol):
