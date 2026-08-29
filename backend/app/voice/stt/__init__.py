@@ -14,6 +14,8 @@ to be a config change at 3am rather than a rewrite (docs/DECISION_LOG.md D7).
 from collections.abc import AsyncIterator
 from typing import Protocol
 
+from app.config import Settings
+
 from ..events import SttEvent
 from ..frames import InboundFrame
 
@@ -40,3 +42,26 @@ class SttProvider(Protocol):
     """Opens a session per call. Holds the configuration; holds no per-call state."""
 
     async def connect(self) -> SttSession: ...
+
+
+def make_stt(settings: Settings) -> SttProvider:
+    """Pick a recognizer from configuration. One line to change vendors mid-hackathon."""
+    # Imported inside the function, not at module scope: the vendor modules import this
+    # one for the Protocol, and nothing should pull a websocket client into memory just
+    # because someone imported a type.
+    if settings.stt_provider == "deepgram":
+        from .deepgram import DeepgramStt
+
+        return DeepgramStt(
+            api_key=settings.deepgram_api_key,
+            model=settings.stt_model,
+            language=settings.stt_language,
+            endpointing_ms=settings.vad_endpointing_ms,
+            utterance_end_ms=settings.vad_utterance_end_ms,
+        )
+    if settings.stt_provider == "fake":
+        # Silent by default. sim_call and tests build FakeStt with a real script.
+        from .fake import FakeStt
+
+        return FakeStt(())
+    raise ValueError(f"STT_PROVIDER={settings.stt_provider!r} is not one of: deepgram, fake")

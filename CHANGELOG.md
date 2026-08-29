@@ -25,6 +25,18 @@ invented timestamps is worse than no log, because the ordering lies silently.
 
 ---
 
+## 2026-08-29T13:45-0500 · voice, agent, telephony · Nacho/claude
+The voice pipeline is live end to end: Deepgram STT → OpenAI (Agents SDK) → Deepgram TTS,
+with turn-taking and barge-in. `/twilio/media` now runs the agent; the echo diagnostic moved
+to `/twilio/voice/echo`. New in `agent/`: `build_agent(model, tools=[])` and the system
+prompt — it deliberately contains **no** price cap, window or permission (that is `policy/`).
+`tools=` is already a parameter, so wiring `propose_*` tools needs no change to the audio path.
+Adds `openai-agents` and `python-multipart`.
+→ Affects: whoever owns `agent/` and `tools/`. The prompt in `agent/prompts.py` is yours to
+  rewrite — keep authorization out of it. `tools/` plugs into `build_agent(tools=[...])`.
+  `uv sync` after pulling. `uv run python -m scripts.sim_call --scenario boss_approved`
+  replays a hostile call with no PSTN leg and no cost — add scenarios there, not by dialling.
+
 ## 2026-08-29T13:15-0500 · voice, telephony, config · Nacho/claude
 `realtime/` is now `voice/`. We are not using OpenAI's Realtime API — the voice path is a
 cascade (Deepgram STT → OpenAI via the Agents SDK → Deepgram TTS) that we orchestrate, so

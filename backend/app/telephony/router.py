@@ -4,6 +4,7 @@ import structlog
 from fastapi import APIRouter, Request, Response, WebSocket
 
 from app.config import get_settings
+from app.voice.session import build_session
 
 from .idempotency import SeenEvents
 from .stream import MediaStreamTransport
@@ -57,7 +58,23 @@ async def media(websocket: WebSocket) -> None:
     """The live audio socket. One connection per call, for the life of the call."""
     await websocket.accept()
     transport = MediaStreamTransport(websocket)
-    await transport.pump_with(echo)
+    session = build_session(get_settings())
+    # The transport is both ends: it is the AudioSource the pipeline listens to and the
+    # AudioSink it speaks into.
+    await transport.pump_with(lambda active: session.run(active, active))
+
+
+@router.post("/twilio/voice/echo")
+async def voice_echo(request: Request) -> Response:
+    """Same as /twilio/voice, but routed to the echo diagnostic instead of the agent."""
+    stream_url = websocket_url(get_settings().public_base_url, "/twilio/media/echo")
+    return Response(content=connect_stream(stream_url), media_type="application/xml")
+
+
+@router.websocket("/twilio/media/echo")
+async def media_echo(websocket: WebSocket) -> None:
+    await websocket.accept()
+    await MediaStreamTransport(websocket).pump_with(echo)
 
 
 async def echo(transport: MediaStreamTransport) -> None:
