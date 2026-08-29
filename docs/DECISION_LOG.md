@@ -3133,3 +3133,64 @@ events; concurrent revocation; transcript expiry; browser caching; and proof bul
 **Would change if:** validated customer workflows require delegated reviewers or regulated export.
 Any expansion must define least-privilege scope, authentication strength, export encryption,
 recipient controls, expiry/revocation, auditability, and abuse limits before access is enabled.
+
+## D45 / Person 2 D-13D — Five-minute transcript-viewing session after fresh TOTP
+
+**Status:** APPROVED
+
+**Approved by:** Person 2 / human decision owner
+
+**Approved at:** 2026-08-29T17:11-05:00
+
+**Context:** D44 requires fresh TOTP before transcript-body access but left the resulting access
+window unresolved. Requiring TOTP for every transcript is highly restrictive; a long reusable
+window creates avoidable exposure from a hijacked or unattended authenticated browser.
+
+**Alternatives considered:**
+
+- **A — Five-minute same-session window.** Supports a short audit investigation while limiting
+  reuse and preserving per-request authorization.
+- **B — One transcript per TOTP.** Strongest transaction binding but creates significant friction
+  when an authorized investigator must compare several calls.
+- **C — Fifteen-minute window.** More convenient but triples the exposure period after step-up.
+- **D — Thirty-minute window.** Easiest for extended review but disproportionate for sensitive
+  transcript bodies and more vulnerable to unattended-session access.
+
+**Decided:** Alternative A. A fresh, server-verified TOTP creates a non-renewable five-minute
+transcript-viewing session bound to the same authenticated actor, tenant, browser/session, and
+approved transcript-access purpose. Every transcript-body request during that window is still
+reauthorized under D44; the window is not a bearer capability or blanket export permission.
+
+**Why:** A balances realistic multi-call audit work with a short exposure window. Per-request
+checks ensure the step-up session cannot preserve access after underlying authority changes.
+
+**Trade-off accepted:** a legitimate investigation lasting longer than five minutes requires a
+new TOTP. A user may need to reauthenticate while reading, and unsaved views must close safely.
+
+**Implementation contract:**
+
+- Measure five minutes using trusted server time from successful TOTP verification; use an
+  absolute expiry and never extend it because of activity, reads, refreshes, or model/client input.
+- Bind the access session to actor ID, tenant ID, authenticated session/device identifier, purpose,
+  authentication event ID, issued time, and expiry. Store only the minimum verifier/session state;
+  never log the TOTP value or reusable authentication secrets.
+- Revalidate current authentication, tenant membership, D44 role, transcript ownership, retention
+  status, and session binding for every body read. Client-side timers and hidden UI are not controls.
+- Invalidate immediately on logout, authenticated-session revocation, TOTP-factor reset/removal,
+  role revocation, tenant switch/removal, relevant security event, or transcript expiry/deletion.
+- Expiry boundary is strict: trusted time earlier than expiry may proceed after all other checks;
+  time equal to or later than expiry denies. Clock uncertainty or store failure fails closed.
+- The session authorizes interactive transcript-body viewing only. It does not authorize bulk
+  export, download, printing, API tokens, model context, cross-tenant search, mandate mutation,
+  confirmation, or commitment.
+- Audit issuance, each use, expiry, invalidation, and denied reuse with reason codes, excluding
+  transcript bodies, TOTP values, and session secrets.
+
+**Verification:** NOT RUN. Required evidence includes reads just before/at/after five minutes;
+non-sliding expiry; browser/session, actor, tenant, and device swaps; logout and every revocation
+condition; concurrent reads; server clock/store failure; guessed/replayed session identifiers;
+per-request role and ownership checks; and proof the window cannot enable export or model access.
+
+**Would change if:** usability testing shows five minutes prevents legitimate audit work and a
+longer interval passes equivalent threat review. Any change requires explicit approval and must
+retain fixed expiry, same-session binding, revocation, per-request authorization, and auditability.

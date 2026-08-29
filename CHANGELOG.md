@@ -37,6 +37,12 @@ DECISION_LOG D8; `policy/` is still the only thing that authorizes anything.
 → Affects: whoever wires `voice/session.py` to a real operation — pass the composed
 prompt and greeting instead of the module-level `SYSTEM_PROMPT` / `GREETING`. Físico:
 `domain/Operation` and `domain/Mandate` should map *into* `CallContext`, not replace it.
+## 2026-08-29T17:11-0500 · identity/data/security · Person 2/Codex
+Human-approved D45/D-13D: fresh TOTP opens a fixed, non-renewable five-minute transcript-viewing
+session bound to the same actor, tenant, authenticated browser session, and audit purpose.
+→ Affects: Person 2/3/4. Reauthorize every body read, invalidate on authority/security changes,
+  enforce expiry with server time, audit use, and grant no download/export/model capability.
+
 ## 2026-08-29T17:08-0500 · identity/data/security · Person 2/Codex
 Human-approved D44/D-13C: transcript bodies are restricted to the tenant owner or explicitly
 assigned auditor/security role, with fresh TOTP and an audit event for every access attempt.
