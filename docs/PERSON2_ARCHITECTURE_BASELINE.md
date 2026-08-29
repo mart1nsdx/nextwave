@@ -2,6 +2,8 @@
 
 **Status:** architecture decision-complete as of D63; implementation and verification are not started.
 
+**Readable PDF:** [`output/pdf/VOLTA_SECURITY_POLICY_ARCHITECTURE.pdf`](../output/pdf/VOLTA_SECURITY_POLICY_ARCHITECTURE.pdf)
+
 This is the short handoff. `docs/DECISION_LOG.md` remains authoritative for alternatives, rationale,
 trade-offs, costs, and verification. Conflicts resolve in favor of the newest approved, non-superseded
 decision. Tests not actually executed are `NOT RUN`.

@@ -37,6 +37,12 @@ DECISION_LOG D8; `policy/` is still the only thing that authorizes anything.
 → Affects: whoever wires `voice/session.py` to a real operation — pass the composed
 prompt and greeting instead of the module-level `SYSTEM_PROMPT` / `GREETING`. Físico:
 `domain/Operation` and `domain/Mandate` should map *into* `CallContext`, not replace it.
+## 2026-08-29T17:45-0500 · docs/architecture/security · Person 2/Codex
+Published the 30-page `VOLTA_SECURITY_POLICY_ARCHITECTURE.pdf`: one-sentence summary, complete
+plain-language flow, eight vector flow diagrams, controls, schedule, costs, D1-D63 index and sources.
+→ Affects: everyone. Use the PDF for onboarding and review; the decision log remains authoritative,
+  implementation is still blocked by official rules, and all product verification remains NOT RUN.
+
 ## 2026-08-29T17:29-0500 · architecture/policy/security · Person 2/Codex
 Human blanket-approved recommended D51-D63 and the Person 2 architecture baseline: callback bounds,
 one-use revalidation, exact tools, escalation/injection, crypto, observability/model, red team,
