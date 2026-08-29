@@ -14,13 +14,47 @@ from agents import Agent, ModelSettings, OpenAIResponsesModel, set_tracing_disab
 from openai import AsyncOpenAI
 from openai.types.shared import Reasoning
 
-from .prompts import GREETING, RECOVERY_LINE, SYSTEM_PROMPT
+from .context import CallContext, CallPhase
+from .prompts import (
+    DEMO_CONTEXT,
+    DEMO_PROFILE,
+    GREETING,
+    RECOVERY_LINE,
+    SYSTEM_PROMPT,
+    build_greeting,
+    build_system_prompt,
+    escalation_line,
+    recovery_line,
+)
 
-__all__ = ["GREETING", "RECOVERY_LINE", "SYSTEM_PROMPT", "build_agent"]
+__all__ = [
+    "DEMO_CONTEXT",
+    "DEMO_PROFILE",
+    "GREETING",
+    "RECOVERY_LINE",
+    "SYSTEM_PROMPT",
+    "CallContext",
+    "CallPhase",
+    "build_agent",
+    "build_greeting",
+    "build_system_prompt",
+    "escalation_line",
+    "recovery_line",
+]
 
 
-def build_agent(model: str, api_key: str, tools: list[Any] | None = None) -> Agent:
+def build_agent(
+    model: str,
+    api_key: str,
+    tools: list[Any] | None = None,
+    *,
+    instructions: str = SYSTEM_PROMPT,
+) -> Agent:
     """The conversational agent. `tools` is empty today and stays a parameter on purpose.
+
+    `instructions` defaults to the demo lane's prompt so the existing call path keeps
+    working. Real calls pass `build_system_prompt(profile, context)` — composed once, at
+    setup, from the company's pre-registration and the operation this call is about.
 
     The model id and key arrive as arguments rather than being read here because this
     package cannot import config — it sits below it in the layering. voice/ passes them in.
@@ -44,7 +78,7 @@ def build_agent(model: str, api_key: str, tools: list[Any] | None = None) -> Age
     set_tracing_disabled(True)
     return Agent(
         name="Volta",
-        instructions=SYSTEM_PROMPT,
+        instructions=instructions,
         model=OpenAIResponsesModel(model=model, openai_client=AsyncOpenAI(api_key=api_key)),
         # Tuned for a phone call, where latency is the product. A reasoning model left at
         # its defaults spends seconds thinking, and seconds of silence on a call read as a

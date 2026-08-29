@@ -25,6 +25,19 @@ invented timestamps is worse than no log, because the ordering lies silently.
 
 ---
 
+## 2026-08-29T17:36-0500 · agent, domain · Nacho/claude
+The system prompt is no longer one hardcoded string. `domain.CompanyProfile` (new — the
+dashboard's pre-registration) and `agent.CallContext` compose it per call:
+`build_system_prompt(profile, context)`, `build_greeting(...)`, `recovery_line(...)`,
+`escalation_line(...)`. Four phases — RFQ, AWARD, RENEGOTIATION, INBOUND — each get their
+own block over a shared core. `build_agent(..., instructions=...)` is keyword-only and
+defaults to the demo lane, so nothing downstream changed yet. The mandate ceiling and
+target are now rendered into the prompt, marked never-say: a deliberate trade, see
+DECISION_LOG D8; `policy/` is still the only thing that authorizes anything.
+→ Affects: whoever wires `voice/session.py` to a real operation — pass the composed
+prompt and greeting instead of the module-level `SYSTEM_PROMPT` / `GREETING`. Físico:
+`domain/Operation` and `domain/Mandate` should map *into* `CallContext`, not replace it.
+
 ## 2026-08-29T14:25-0500 · agent, voice · Nacho/claude
 `build_agent(model, api_key, tools=None)` — the key is now a required argument. It has to
 be: pydantic-settings loads `.env` into a `Settings` object and never exports to

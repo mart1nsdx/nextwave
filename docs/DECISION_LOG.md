@@ -121,3 +121,26 @@ stage and by mu-law 8 kHz end to end, so nothing resamples.
 **Would change if:** our own barge-in measures worse on a real line than Realtime's, or
 cascade latency lands somewhere a dispatcher reads as dead air. Both are measurable on
 a real call, and that measurement is the trigger — not a preference.
+
+## D8 — The mandate figures are rendered into the prompt, and never spoken
+
+**Decided:** the price ceiling and target for the operation go into the system prompt,
+under a block that forbids ever saying them out loud. `agent/context.py` carries them;
+`prompts.py` renders them.
+
+**Beat:** (a) keeping them out entirely, so the agent proposes blind and learns the answer
+only from `policy.evaluate()`; (b) giving it a target but not the ceiling.
+
+**Why:** an agent that cannot tell a number worth pushing on from one that is not either
+accepts the first quote or argues with every quote. Both look bad on a call, and the
+demo is a negotiation. Option (a) is the safer design and it stays the fallback.
+
+**Cost, stated plainly:** a prompt is text a counterparty can argue with, and a persistent
+one can talk a figure out of a model. Two things contain that, and neither may be removed:
+the prompt forbids saying the figures, and `policy/` still decides every proposal — so a
+leaked ceiling is an embarrassment, not an authorization. Invariant #2 is untouched: the
+mandate is still immutable from inside the call, because nothing the model says can write
+it.
+
+**Would change if:** a figure leaks on a live call, or a judge extracts one. The fix then
+is to stop rendering it — not to add another sentence asking the model more nicely.
