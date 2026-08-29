@@ -1,12 +1,14 @@
 """The PSTN edge: inbound call webhook, the media WebSocket, and status callbacks."""
 
 import structlog
-from fastapi import APIRouter, Request, Response, WebSocket
+from fastapi import APIRouter, HTTPException, Request, Response, WebSocket
+from pydantic import BaseModel, Field
 
 from app.config import get_settings
 from app.voice.session import build_session
 
 from .idempotency import SeenEvents
+from .outbound import place_call
 from .stream import MediaStreamTransport
 from .twiml import connect_stream, websocket_url
 
@@ -87,3 +89,22 @@ async def echo(transport: MediaStreamTransport) -> None:
     """
     async for frame in transport.frames():
         await transport.send_audio(frame.payload)
+
+
+class CallRequest(BaseModel):
+    """Who to dial. E.164 because Twilio rejects anything else."""
+
+    to: str = Field(pattern=r"^\+[1-9]\d{7,14}$")
+
+
+@router.post("/calls")
+async def start_call(request: CallRequest) -> dict[str, str]:
+    """Place a real outbound call. This costs money and rings a real phone."""
+    try:
+        call_sid = await place_call(request.to, get_settings())
+    except ValueError as missing:
+        # Configuration gaps are the common failure here and they are all fixable in
+        # thirty seconds — if the message says which key is empty. A 500 and a stack
+        # trace at hour 20 does not.
+        raise HTTPException(status_code=503, detail=str(missing)) from missing
+    return {"call_id": call_sid}
