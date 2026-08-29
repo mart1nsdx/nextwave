@@ -37,6 +37,12 @@ DECISION_LOG D8; `policy/` is still the only thing that authorizes anything.
 → Affects: whoever wires `voice/session.py` to a real operation — pass the composed
 prompt and greeting instead of the module-level `SYSTEM_PROMPT` / `GREETING`. Físico:
 `domain/Operation` and `domain/Mandate` should map *into* `CallContext`, not replace it.
+## 2026-08-29T16:47-0500 · identity/dashboard/policy/security · Person 2/Codex
+Human-approved D38/D-04M: each `HUMAN_ESCALATION` commitment requires fresh TOTP and a
+two-minute, single-use approval bound to the exact winner, evidence, recipient, and email.
+→ Affects: everyone. Display all material terms/alternatives, invalidate on any change,
+  authorize only one D28 dispatch, and give voice/model/email/admin paths no approval capability.
+
 ## 2026-08-29T16:45-0500 · identity/notify/security · Person 2/Codex
 Human-approved D37/D-04L: carrier mailbox challenges expire after 15 minutes, are single-use,
 and have one active token per contact; replacement permanently invalidates the prior token.

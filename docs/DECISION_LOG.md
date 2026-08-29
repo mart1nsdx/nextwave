@@ -2606,3 +2606,89 @@ redaction, and proof that challenge completion cannot accept terms or mutate aut
 **Would change if:** measured delivery latency or accessibility evidence shows 15 minutes is
 unworkable. Any longer lifetime or higher issuance limit requires abuse/quota analysis and human
 approval; no adaptive model-selected extension is permitted.
+
+## D38 / Person 2 D-04M — Fresh TOTP for each escalated commitment approval
+
+**Status:** APPROVED
+
+**Approved by:** Person 2 / human decision owner
+
+**Approved at:** 2026-08-29T16:47-05:00
+
+**Context:** D31/D-04F permits a mandate to require `HUMAN_ESCALATION`, but D25/D-03C
+explicitly governs mandate writes rather than transaction-specific commitment approvals.
+A stolen or unattended ordinary dashboard session must not be sufficient to send the
+official commitment email.
+
+**Alternatives considered:**
+
+- **A — Fresh TOTP plus two-minute exact-transaction confirmation.** Reuse D25's mechanism
+  and bind it to the selected candidate, evidence, recipient, mandate, and canonical email.
+- **B — Ordinary authenticated dashboard approval.** Less friction but session compromise
+  can create a carrier commitment.
+- **C — Email approval link.** Convenient but turns email access/forwarding/replay into
+  commitment authority.
+- **D — Voice approval.** Violates the dashboard-only boundary and reintroduces probabilistic
+  identity, transcription, and intent.
+
+**Decided:** Alternative A. Every transaction under `commitment_mode=HUMAN_ESCALATION`
+requires the current authenticated mandate owner to review the exact selected option and
+canonical official email, complete a new TOTP challenge, and consume a two-minute single-use
+transaction confirmation. The confirmation binds every authorization-relevant input and is
+invalidated by any change. It authorizes one dispatch attempt under D26–D28; it does not alter
+the mandate, permit payment, or authorize a replacement/retry.
+
+**Why:** A gives human-escalation mode evidence of immediate second-factor participation and
+exact informed intent equivalent to mandate changes, without allowing the model or email
+channel to approve its own proposed action.
+
+**Trade-off accepted:** repeated TOTP and a short review window add friction and can allow
+quotes/FX evidence to expire. The owner may still approve a poor but mandate-compliant option.
+TOTP is phishable and does not substitute for clear terms or secure endpoint/session controls.
+
+**Implementation contract:**
+
+- The approval UI is available only to the current authenticated mandate owner at AAL2 and
+  starts a fresh provider-backed TOTP challenge for this exact action; prior AAL2 or a D25
+  mandate-write confirmation cannot be reused.
+- Before challenge, display carrier/legal identity, verified contact and role, service/scope,
+  origin/destination, dates/windows, every comprehensive cost component/original currency,
+  FX snapshot/rate/age/cross-check/margin, unbuffered/buffered all-in USD values, mandate cap,
+  selection/tie-break evidence, competing eligible alternatives, material conditions,
+  exclusions/unknowns, quote expiry, and the exact canonical email subject/body.
+- Issue an opaque confirmation bound server-side to actor, Supabase session ID, tenant,
+  operation/candidate/version, comparison snapshot/winner, mandate ID/version/mode, every
+  quote/cost/FX/RT evidence version, verified carrier/contact/version, exact recipient/header/
+  template/payload digest, policy/schema versions, TOTP challenge evidence, issue/expiry,
+  nonce, and unused status.
+- Use D25 boundary semantics: expires exactly two minutes after trusted server issuance;
+  `now < expires_at` may be consumed, `now >= expires_at` is expired. Consume atomically with
+  operation preparation/authorization so concurrent/replayed submissions cannot create another.
+- Immediately before email dispatch, D26 complete mediation re-reads every bound authoritative
+  value and recomputes eligibility/winner. Any change—including price, terms, quote status,
+  FX freshness/divergence, mandate, recipient/contact, candidate set, selection, template/email,
+  revocation, or operation state—invalidates approval and requires fresh review/TOTP.
+- Approval is explicit with no preselected control, batch approval, wildcard, standing token,
+  model-generated assent, silence, or voice proxy. The owner must see the complete current
+  payload; truncated/hidden material terms block confirmation.
+- One successful approval authorizes only the D28 single dispatch attempt. Provider timeout/
+  ambiguity becomes `UNKNOWN`; approval cannot be reused to resend, switch recipient/carrier,
+  change content, or create a new operation.
+- Denial/expiry records reason-coded immutable evidence and sends nothing. The owner may request
+  new quotations or later approve a freshly evaluated operation but cannot edit authoritative
+  fields inside the approval screen.
+- Audit approval presentation/version, exact payload digest, actor/session/TOTP evidence reference,
+  timestamps, outcome, revalidation, dispatch attempt, and provider lifecycle without storing
+  TOTP codes, tokens, or unnecessary PII.
+- Email, voice, model, carrier, administrator, and recap capabilities cannot start, satisfy,
+  consume, or bypass transaction approval. Payment remains out of scope.
+
+**Verification:** NOT RUN. Required evidence includes AAL1/old-AAL2/fresh-TOTP paths,
+owner/non-owner, complete/truncated UI data, two-minute boundaries, replay/concurrency, binding
+substitution for every enumerated field, quote/FX/mandate/contact/candidate/template changes,
+winner recomputation, denial/expiry, one dispatch then timeout/unknown, retry/switch attempts,
+audit redaction, and proof that voice/model/email/admin/recap paths cannot approve.
+
+**Would change if:** a stronger phishing-resistant factor or enterprise dual-control workflow is
+approved. Any reusable approval window, batch authorization, different lifetime, or alternate
+channel requires a new threat-model decision; it cannot inherit mandate-write authority silently.
