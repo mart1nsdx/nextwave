@@ -25,6 +25,13 @@ invented timestamps is worse than no log, because the ordering lies silently.
 
 ---
 
+## 2026-08-29T17:23-05 · supabase, domain, agent · Codex
+Added `call_recaps.agreement_candidates` as a non-null JSONB array for audio-anchored
+agreement evidence. The model writes candidates only; deterministic policy remains the
+sole future authority that can write commitments.
+→ Affects: dashboard and policy. Read the candidates from the persisted recap; never
+  treat them as `COMMITTED` without the policy and written-recap gates.
+
 ## 2026-08-29T16:47-05 · voice, telephony, ledger, repo, agent · Codex
 The live bidirectional call now opens an evidence case, persists final caller and agent
 turns with Twilio audio offsets, and produces persisted recap and call-brief reports when
