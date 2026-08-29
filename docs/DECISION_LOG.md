@@ -121,3 +121,64 @@ stage and by mu-law 8 kHz end to end, so nothing resamples.
 **Would change if:** our own barge-in measures worse on a real line than Realtime's, or
 cascade latency lands somewhere a dispatcher reads as dead air. Both are measurable on
 a real call, and that measurement is the trigger — not a preference.
+
+## D-DB-01 — Postgres constraints carry the invariants, not application code
+
+**Decided:** every `AGENTS.md` invariant that can be expressed as an index, check, privilege
+or trigger is expressed that way. See `docs/DATA_MODEL.md` §1 for the mapping.
+
+**Beat:** enforcing all of them in `policy/` and treating the database as storage.
+
+**Why:** the project's thesis is that the system refuses invalid states rather than trusting
+the agent to avoid them. That is only credible if it also holds below the application, since
+the application is where the agent lives. "Two carriers confirm at the same instant" is a
+real race when we dial three at once; a partial unique index makes the second write fail
+instead of relying on a code path someone remembered.
+
+**Would change if:** a constraint starts rejecting legitimate paths. One already did — see
+D-DB-03.
+
+## D-DB-02 — Conversion logic in Python, conversion evidence in the database
+
+**Decided:** FX conversion happens once, in `policy/`, with `Decimal`. The database stores
+the snapshot, the inputs and the result, and exposes the `offer_display` view to render a
+stored USD amount back into the quote currency.
+
+**Beat:** a plpgsql conversion function, which is what "add conversion functions to MXN"
+most directly suggests.
+
+**Why:** a SQL function would be a second implementation of the cap rule, able to disagree
+silently with the first. Two sources of truth for "is this within the mandate" is the one
+failure this architecture cannot absorb. The view formats; it never decides.
+
+**Would change if:** never for authorization. A display-only helper is fine.
+
+## D-DB-03 — Mandate lifecycle keyed on `status`, not on `superseded_by`
+
+**Decided:** `mandates.status` defines which version is active; `superseded_by` is only the
+link to the replacement.
+
+**Beat:** the original design where `superseded_by is null` meant "active".
+
+**Why:** that design made supersession impossible in either order — inserting the new version
+violated the one-active index, and updating the old row first violated the foreign key to a
+version that did not exist yet. A deferrable constraint would fix it, but Postgres cannot
+defer a *partial* unique index. Found by trying to raise a cap on the seed data, which is
+the argument for exercising a schema rather than reviewing it.
+
+**Note:** the constraint was right and the schema was wrong. It correctly refused two live
+mandates; it also refused the legitimate path, and that is a schema bug.
+
+## D-DB-04 — ISO 6346 check digits enforced in the database
+
+**Decided:** a `check` constraint validates the container-number check digit, not just its
+shape.
+
+**Beat:** the JSON-schema pattern alone (four letters, seven digits).
+
+**Why:** while writing the constraint tests for this branch, two invented container numbers
+passed the pattern and were wrong. `DOMAIN.md` warns that a logistics judge will notice. It
+is a format check in the same class as the E.164 regex on phone numbers — deterministic, no
+authority, refuses but never grants.
+
+**Cost:** ~25 lines of plpgsql. Verified against an independent Python implementation.
