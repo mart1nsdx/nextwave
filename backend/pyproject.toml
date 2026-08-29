@@ -1,0 +1,46 @@
+[project]
+name = "volta"
+version = "0.1.0"
+description = "Voice agent that runs the drayage leg of a shipment by phone."
+requires-python = ">=3.12"
+
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",       # [standard] pulls the websockets stack Media Streams needs
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "structlog>=24.4",
+    "httpx>=0.27",
+    "twilio>=9.3",
+    "openai>=1.57",
+    "websockets>=13.1",
+    "supabase>=2.10",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.8",
+    "mypy>=1.13",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+# Third-party stubs are patchy for twilio/supabase; we type our own code, not theirs.
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.uv]
+package = false

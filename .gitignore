@@ -1,0 +1,48 @@
+# --- Secrets ---
+# .env must never be committed. If a key lands here, rotate it and tell the team.
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# --- Python (backend) ---
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+# uv.lock IS committed on purpose — four people, one resolved dependency set.
+
+# --- Node (dashboard) ---
+node_modules/
+dist/
+build/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- Call artifacts ---
+# Recordings are PII and are large. Transcript fixtures under
+# backend/tests/fixtures/ are committed; audio never is.
+*.wav
+*.mp3
+recordings/
+
+# --- Supabase local state ---
+supabase/.branches/
+supabase/.temp/
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- Misc ---
+coverage/
+tmp/
+temp/
