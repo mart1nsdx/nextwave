@@ -37,6 +37,12 @@ DECISION_LOG D8; `policy/` is still the only thing that authorizes anything.
 → Affects: whoever wires `voice/session.py` to a real operation — pass the composed
 prompt and greeting instead of the module-level `SYSTEM_PROMPT` / `GREETING`. Físico:
 `domain/Operation` and `domain/Mandate` should map *into* `CallContext`, not replace it.
+## 2026-08-29T17:22-0500 · voice/identity/policy/security · Person 2/Codex
+Human-approved D50/D-11A: an inbound order number is lookup evidence only; protected processing
+requires a new outbound call to the carrier number in the verified directory.
+→ Affects: Person 1/2/3. Reveal nothing on the inbound leg, resolve destinations from trusted state,
+  bind a single-use callback challenge, fail closed on call ambiguity, and meter all USD call costs.
+
 ## 2026-08-29T17:20-0500 · crypto/infra/security · Person 2/Codex
 Human-approved D49/D-14B: use loopback-only OpenBao Transit dev mode as the USD 0 demo key
 provider, only for synthetic/explicit demo data and never for staging or production.

@@ -3507,3 +3507,80 @@ non-synthetic data rejection; version pinning; controlled cleanup; and no plaint
 **Would change if:** a verified, guaranteed-zero-charge managed KMS becomes available without
 billing/overage exposure and fits the schedule, or the team approves the costs and operations of a
 production-grade provider. Dev mode can never be promoted merely by changing an environment flag.
+
+## D50 / Person 2 D-11A — Order lookup followed by verified-directory callback
+
+**Status:** APPROVED
+
+**Approved by:** Person 2 / human decision owner
+
+**Approved at:** 2026-08-29T17:22-05:00
+
+**Context:** inbound callers may report delays or request changes concerning an existing order.
+An order number locates an operation but may appear in email, paperwork, forwarded messages, or a
+breach; knowledge of it does not prove that the caller controls the authorized carrier channel.
+
+**Alternatives considered:**
+
+- **A — Order number plus verified callback.** Use the number only to locate the operation, then
+  initiate a new call to the carrier phone number in the D36 verified directory before disclosure
+  or operation-specific action.
+- **B — Order number plus inbound caller-ID match.** Faster and avoids another call, but caller ID
+  can be spoofed and routing/forwarding can make it unreliable evidence.
+- **C — Order number alone.** Lowest friction and cost but authenticates knowledge, not identity.
+- **D — Order number plus verified-mailbox challenge.** Strong channel control but adds latency and
+  consumes D37/D40 non-commitment email capacity.
+
+**Decided:** Alternative A. The inbound caller may provide an order number solely as an untrusted
+lookup proposal. Trusted code resolves it without disclosing whether protected details match, then
+starts a new outbound callback to the currently verified carrier phone contact associated with the
+operation. Only the verified callback session may enter the authenticated inbound-service flow.
+
+**Why:** A separates an easily shared identifier from proof of carrier-channel control and defeats
+an attacker who knows a valid order number but does not control the verified directory number.
+
+**Trade-off accepted:** every legitimate inbound event incurs delay and an additional outbound
+telephony leg. A carrier temporarily unable to receive the callback must escalate rather than
+receive protected details or modify the operation through the inbound call.
+
+**Cost contract:** callback duration, destination/country rates, origination number, carrier fees,
+taxes/surcharges, recording/transcription/Realtime usage, retries, failed/answered calls, and any
+provider minimums are operating costs that must be counted in the current USD cost baseline before
+live use. This decision does not approve a provider, paid tier, unlimited retries, automatic credit
+purchase, or spend beyond the explicit team budget. If budget/quota is unavailable, escalate.
+
+**Implementation contract:**
+
+- Accept an order number as typed untrusted input with strict format/length/rate limits. Use
+  constant-shape responses and do not reveal existence, tenant, carrier, route, status, price,
+  contact, or other protected data on the inbound leg.
+- Resolve tenant/operation/carrier and the current verified callback number entirely from trusted
+  state. Caller-supplied numbers, caller ID, speech, model output, transcript content, prior contact,
+  or an order record's free text cannot select or replace the callback destination.
+- Before dialing, revalidate operation state/version, carrier-directory record/version/status,
+  callback purpose, tenant policy, jurisdiction/support status, notice policy, budget/quota, abuse
+  limits, and absence of an active conflicting callback. Fail closed on ambiguity or stale data.
+- Create a short-lived, single-use callback challenge bound to tenant, operation/version, carrier,
+  verified contact/version, inbound call/session, purpose, and expiry. The exact expiry, attempt
+  limits, and answered-party confirmation require follow-on approval.
+- End the inbound call or place it in a non-sensitive terminal state before callback; never bridge,
+  transfer, or preserve inbound authorization. A returned callback is a new session.
+- On the callback, complete D43 notice before substantive processing. Successful connection alone
+  does not authorize changes, commitments, mandate mutation, or disclosure beyond the minimum
+  needed for the separately approved inbound workflow.
+- Timeout, busy/no-answer, wrong person, voicemail, forwarding ambiguity, number change, provider
+  error, or challenge mismatch remains unauthenticated and escalates. Do not fall back to caller ID,
+  order-number knowledge, email supplied during the call, or model judgment.
+- Use concurrency-safe attempt accounting and one active challenge per operation/carrier purpose.
+  Audit inbound lookup, redacted resolution, callback authorization/attempt/result, channel/contact
+  versions, costs, and reason codes without transcript bodies or full phone numbers.
+
+**Verification:** NOT RUN. Required evidence includes valid/invalid/guessed/enumerated order IDs;
+constant-shape responses; caller-ID spoof; caller-supplied callback number; stale/revoked/changed
+directory contact; cross-tenant IDs; concurrent callbacks; budget/quota denial; busy/no-answer/
+voicemail/forwarding/wrong person; provider timeout; replay; prompt injection; and proof the inbound
+leg cannot read protected details or cause any operation mutation.
+
+**Would change if:** carriers adopt a stronger mutually authenticated inbound channel or validated
+operations show callback latency is unacceptable. Any replacement must authenticate channel
+control independently of the order number and receive separate security, cost, and test approval.
