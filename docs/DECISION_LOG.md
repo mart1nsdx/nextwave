@@ -2251,3 +2251,103 @@ test-versus-live separation, and proof that models cannot address or send email.
 **Would change if:** free-plan terms, limits, deliverability, data handling, or reliability no
 longer fit, or an existing approved organizational service is safer. Any provider/plan/domain
 change requires cost, privacy, security, migration, and failure-semantics approval.
+
+## D34 / Person 2 D-04I — Resend for separate recap and commitment email flows
+
+**Status:** APPROVED
+
+**Approved by:** Person 2 / human decision owner
+
+**Approved at:** 2026-08-29T16:37-05:00
+
+**Context:** D31/D-04F separates non-binding call pre-agreement evidence from the later
+official commitment email, and D33/D-04H selects Resend Free for commitments. The system
+also needs to decide whether non-binding recap email uses the same provider, a second
+provider, or no email channel.
+
+**Alternatives considered:**
+
+- **A — Resend for both, with strictly separate flows.** One vendor/credential and webhook
+  surface, but independent message types, templates, policy permissions, states, and evidence.
+- **B — SendGrid for recaps and Resend for commitments.** Preserves a parallel implementation
+  proposal but adds another vendor, credential, cost/privacy surface, and failure model.
+- **C — Dashboard-only recaps.** Minimizes external disclosure but removes the carrier's
+  written opportunity to identify errors in the captured pre-agreement.
+- **D — SendGrid for both.** Replaces the approved provider and requires new provider,
+  security, privacy, and cost approval.
+
+**Decided:** Alternative A. Resend is the only email provider in the approved baseline, but
+Volta implements two structurally separate capabilities:
+
+1. `PREAGREEMENT_RECAP` sends a clearly labeled non-binding recap of validated call evidence
+   so the carrier can review/correct captured terms. It can never authorize selection,
+   commitment, mandate mutation, or payment.
+2. `OFFICIAL_COMMITMENT` sends only the exact deterministic commitment authorized under
+   D26–D33, after autonomous policy approval or transaction-specific human escalation.
+
+Provider reuse does not merge the flows or their state machines.
+
+**Why:** A minimizes credentials, vendor due diligence, integration time, quota accounting,
+webhook code, and monetary exposure while preserving the essential evidence-versus-authority
+boundary. A single provider adapter can share transport mechanics without sharing policy
+capabilities or semantic state.
+
+**Trade-off accepted:** a Resend outage or quota failure affects both channels, creating a
+shared availability dependency. Recap content still discloses negotiation information to an
+external processor and recipient. Provider-level message events can be confused across flows
+unless operation type and identity are strongly bound.
+
+**Cost and quota contract:**
+
+- Both inbound and outbound messages across both flows consume the single D33 Free allowance
+  of 100 messages/day and 3,000/month; they are not separate quotas.
+- Reserve quota for higher-priority `OFFICIAL_COMMITMENT` messages. Exact reservation and
+  shedding rules remain a separate approval; recap traffic may never exhaust commitment quota.
+- Baseline provider subscription remains USD 0/month within the combined allowance. No
+  automatic upgrade, overage, second Resend account, or SendGrid fallback is permitted.
+- Domain/DNS, privacy, storage, monitoring, engineering, taxes, and any later paid-plan costs
+  remain as disclosed in D33.
+
+**Implementation contract:**
+
+- Define distinct typed commands, authorization checks, canonical templates, subject prefixes,
+  sender/reply-to policy, provider tags/metadata, operation identifiers, audit event types,
+  webhook transition maps, and UI badges for `PREAGREEMENT_RECAP` and `OFFICIAL_COMMITMENT`.
+- A recap command accepts only validated evidence references and a verified carrier contact.
+  It is labeled prominently `NON-BINDING PRE-AGREEMENT RECAP — NOT A COMMITMENT`, requests
+  corrections through an approved channel, and never states booked/awarded/committed/paid.
+- Recap body may use model-generated summary fields only after deterministic schema validation,
+  provenance binding, output encoding, and clear attribution to evidence. Unknown/ambiguous
+  material values remain visibly unknown; the model cannot invent or resolve them.
+- Official commitment subject/body/material fields are rendered solely by trusted deterministic
+  code from the exact D26 `PREPARED` operation. No recap/model/free-text field can flow into
+  the commitment command except through separately validated typed authoritative data.
+- Use separate least-privilege internal capability tokens/ports. Possession of recap-send
+  capability cannot invoke commitment send, choose `commitment_mode`, mark a candidate eligible,
+  or transition commitment state.
+- Bind every provider request and webhook event to tenant, message type, operation/message ID,
+  recipient/contact version, canonical payload digest, provider message ID, and expected state.
+  Cross-type events fail closed and are audited.
+- Lifecycle names remain type-qualified. `PREAGREEMENT_RECAP_PROVIDER_ACCEPTED` or delivered
+  never means commitment; `OFFICIAL_COMMITMENT_PROVIDER_ACCEPTED` is still not proof of delivery,
+  reading, counterparty agreement, payment, or legal formation.
+- Deduplicate and apply D28 no-blind-resend independently per message operation. A failed recap
+  cannot trigger an official commitment, and a commitment failure cannot be concealed by a
+  successful recap event.
+- Apply data minimization separately: recap includes only negotiation evidence needed for
+  correction; commitment includes only approved contract terms. Do not include transcripts,
+  audio, secrets, internal mandate limits, alternative bids, RT internals, or unnecessary PII.
+- Tests and local adapters must make message type unmistakable and cannot create production
+  lifecycle evidence. SendGrid credentials/configuration are outside the approved architecture.
+
+**Verification:** NOT RUN. Required evidence includes compile-time/runtime capability
+separation, distinct templates/subjects/tags/states, model prompt injection into recap,
+unknown/ambiguous fields, verified versus attacker-controlled recipient, cross-type provider
+events, quota exhaustion/reservation, provider outage, duplicate/unknown send outcomes,
+non-binding wording, deterministic commitment rendering, data minimization, and proof that a
+successful recap can never authorize or represent commitment or payment.
+
+**Would change if:** one-provider concentration creates unacceptable availability/privacy risk
+or recipients require a different verified channel. A second provider or dashboard-only recap
+requires cost, privacy, security, routing, failover, and state-semantics approval; it cannot be
+introduced as an automatic fallback.

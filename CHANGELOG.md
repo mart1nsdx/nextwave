@@ -38,6 +38,12 @@ DECISION_LOG D8; `policy/` is still the only thing that authorizes anything.
 prompt and greeting instead of the module-level `SYSTEM_PROMPT` / `GREETING`. Físico:
 `domain/Operation` and `domain/Mandate` should map *into* `CallContext`, not replace it.
 
+## 2026-08-29T16:37-0500 · notify/policy/security · Person 2/Codex
+Human-approved D34/D-04I: Resend serves two strictly separate email capabilities—a visibly
+non-binding pre-agreement recap and a deterministic authorized official commitment.
+→ Affects: everyone. Share transport only; separate commands/templates/capabilities/states,
+  bind webhook type, reserve combined quota for commitments, and never equate recap with authority.
+
 ## 2026-08-29T16:21-0500 · notify/policy/security · Person 2/Codex
 Human-approved D33/D-04H: Resend Free is the hackathon official commitment-email provider,
 within 100/day and 3,000/month at USD 0/month, using one verified custom domain.
