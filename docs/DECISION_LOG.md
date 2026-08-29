@@ -89,3 +89,23 @@ generated. Logging every commit duplicates `git log` with worse tooling.
 
 **Cost:** concurrent appends conflict. Mitigated by a rule in both `AGENTS.md` and the
 file header: keep both entries, order by timestamp, never resolve by deleting.
+
+---
+
+## D7 — Verification, notification, and recap pipeline
+
+**Decision:** Transcribe the live Twilio call (Deepgram streaming STT), save append-only,
+idempotent transcript events to Supabase linked to `CallSid` and audio offsets, then run
+recap generation *after* the call and email it before any commitment is verified.
+
+**Options considered:** Transcribe only after the call, let the voice model create
+commitments in real time, or persist one mutable transcript without audio offsets.
+
+**What we choose:** Post-call `RecapService` reads the persisted transcript, generates the
+recap + brief (OpenAI), emails the recap (SendGrid), and stores the delivery status. A
+failed send (`RecapDelivery(status=failed)`) means the commitment stays uncommitted.
+
+**Why:** preserves an auditable click-to-audio record and prevents an unverified model
+utterance, dashboard action, or notification failure from creating a booking.
+
+**Full design, file map, env vars, and runbook:** `docs/VERIFICATION.md`.

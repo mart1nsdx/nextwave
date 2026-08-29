@@ -7,3 +7,7 @@ The interface exists so sim_call and the test suite can run against an in-memory
 implementation with no network. All database access in the codebase goes through here;
 a Supabase client constructed anywhere else is a bug.
 """
+
+from app.repo.store import InMemoryTranscriptStore, SupabaseTranscriptStore
+
+__all__ = ["InMemoryTranscriptStore", "SupabaseTranscriptStore"]
