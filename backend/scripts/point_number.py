@@ -1,15 +1,20 @@
-"""Point the Twilio number at the ngrok tunnel that is running right now.
+"""Point the Twilio number at whatever tunnel is running right now.
 
     uv run python -m scripts.point_number
 
-The ngrok URL changes on every restart, and a stale webhook does not raise anything —
+The tunnel URL changes on every restart, and a stale webhook does not raise anything —
 inbound calls just 404 and the caller hears silence. That failure is invisible until a
 judge dials in, so re-pointing is a command rather than a checklist item.
 
-Reads the live tunnel from ngrok's local API, updates the number, and writes
-PUBLIC_BASE_URL into .env so the server and the webhook can never disagree.
+Finds the live tunnel, updates the number, and writes PUBLIC_BASE_URL into .env so the
+server and the webhook can never disagree. Works with either tunnel by asking its local
+API, so nobody has to copy a URL by hand:
 
-    --echo   point the number at the echo diagnostic instead of the agent
+    cloudflared tunnel --url http://localhost:8000 --metrics localhost:20241
+    ngrok http 8000
+
+    --url   give the tunnel URL explicitly, if you are using something else
+    --echo  point the number at the echo diagnostic instead of the agent
 """
 
 import argparse
@@ -22,23 +27,42 @@ from twilio.rest import Client
 from app.config import get_settings
 
 NGROK_API = "http://127.0.0.1:4040/api/tunnels"
+CLOUDFLARED_API = "http://127.0.0.1:20241/quicktunnel"
 ENV_FILE = pathlib.Path(__file__).resolve().parent.parent / ".env"
 
 
-def current_tunnel() -> str:
+def _from_ngrok() -> str | None:
     try:
-        tunnels = httpx.get(NGROK_API, timeout=3.0).json()["tunnels"]
-    except (httpx.HTTPError, KeyError) as unreachable:
-        raise SystemExit(
-            f"Cannot reach ngrok's local API at {NGROK_API} ({unreachable}). "
-            "Start it first:  ngrok http 8000"
-        ) from unreachable
-
+        tunnels = httpx.get(NGROK_API, timeout=2.0).json()["tunnels"]
+    except (httpx.HTTPError, KeyError, ValueError):
+        return None
     for tunnel in tunnels:
-        url = tunnel.get("public_url", "")
+        url = str(tunnel.get("public_url", ""))
         if url.startswith("https://"):
-            return str(url)
-    raise SystemExit("ngrok is running but has no https tunnel. Try: ngrok http 8000")
+            return url
+    return None
+
+
+def _from_cloudflared() -> str | None:
+    try:
+        hostname = httpx.get(CLOUDFLARED_API, timeout=2.0).json()["hostname"]
+    except (httpx.HTTPError, KeyError, ValueError):
+        return None
+    return f"https://{hostname}" if hostname else None
+
+
+def current_tunnel() -> str:
+    """Whichever tunnel is up. Asking beats copying a URL out of a scrollback."""
+    for probe in (_from_cloudflared, _from_ngrok):
+        found = probe()
+        if found:
+            return found
+    raise SystemExit(
+        "No tunnel found. Start one and try again:"
+        "\n  cloudflared tunnel --url http://localhost:8000 --metrics localhost:20241"
+        "\n  ngrok http 8000"
+        "\nOr pass the URL yourself with --url https://...."
+    )
 
 
 def write_public_base_url(url: str) -> None:
@@ -55,6 +79,10 @@ def write_public_base_url(url: str) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
+        "--url",
+        help="tunnel base URL, if it is not a local cloudflared or ngrok we can ask",
+    )
+    parser.add_argument(
         "--echo",
         action="store_true",
         help="route the number to the echo diagnostic instead of the agent",
@@ -67,7 +95,7 @@ def main() -> int:
             print(f"{key.upper()} is empty in .env — cannot reach Twilio.", file=sys.stderr)
             return 1
 
-    base = current_tunnel()
+    base = args.url.rstrip("/") if args.url else current_tunnel()
     voice_path = "/twilio/voice/echo" if args.echo else "/twilio/voice"
 
     client = Client(settings.twilio_account_sid, settings.twilio_auth_token)

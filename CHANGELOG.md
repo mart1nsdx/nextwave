@@ -25,6 +25,17 @@ invented timestamps is worse than no log, because the ordering lies silently.
 
 ---
 
+## 2026-08-29T14:02-0500 · scripts · Nacho/claude
+`uv run python -m scripts.point_number` repoints the Twilio number at whatever tunnel is
+running and writes `PUBLIC_BASE_URL` into `.env`, so the server and the webhook cannot
+disagree. Run it every time the tunnel restarts — a stale webhook raises nothing, calls
+just 404 and the caller hears silence.
+→ Affects: everyone who tests by phone. **Windows Defender blocks ngrok as unwanted
+  software** — it silently deletes the binary mid-install, which looks like a broken scoop
+  shim. Use cloudflared instead: `scoop install cloudflared`, then
+  `cloudflared tunnel --url http://localhost:8000 --metrics localhost:20241`. No account,
+  no authtoken. The script finds either tunnel, or takes `--url`.
+
 ## 2026-08-29T13:45-0500 · voice, agent, telephony · Nacho/claude
 The voice pipeline is live end to end: Deepgram STT → OpenAI (Agents SDK) → Deepgram TTS,
 with turn-taking and barge-in. `/twilio/media` now runs the agent; the echo diagnostic moved
