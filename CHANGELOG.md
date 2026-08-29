@@ -25,6 +25,12 @@ invented timestamps is worse than no log, because the ordering lies silently.
 
 ---
 
+## 2026-08-29T18:09-05 · voice, config · Codex
+Raised the local barge-in gate from 900 RMS for 120 ms to 1800 RMS for 300 ms and added
+a regression test for sustained moderate background noise.
+→ Affects: anyone testing calls. Restart the backend after pulling; tune the two
+  `VAD_BARGE_IN_*` variables only if the actual phone line still needs calibration.
+
 ## 2026-08-29T17:27-05 · config, repo, supabase · Codex
 Replaced the legacy `SUPABASE_SERVICE_ROLE_KEY` configuration with
 `SUPABASE_SECRET_KEY` for backend-only evidence persistence.
