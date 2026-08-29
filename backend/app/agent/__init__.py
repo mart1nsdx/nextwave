@@ -14,9 +14,19 @@ from agents import Agent, ModelSettings, OpenAIResponsesModel, set_tracing_disab
 from openai import AsyncOpenAI
 from openai.types.shared import Reasoning
 
+from .models import OpenAIRecapModel
 from .prompts import GREETING, RECOVERY_LINE, SYSTEM_PROMPT
+from .recap import build_brief, build_recap
 
-__all__ = ["GREETING", "RECOVERY_LINE", "SYSTEM_PROMPT", "build_agent"]
+__all__ = [
+    "GREETING",
+    "RECOVERY_LINE",
+    "SYSTEM_PROMPT",
+    "OpenAIRecapModel",
+    "build_agent",
+    "build_brief",
+    "build_recap",
+]
 
 
 def build_agent(model: str, api_key: str, tools: list[Any] | None = None) -> Agent:

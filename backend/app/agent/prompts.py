@@ -49,3 +49,16 @@ GREETING = (
 # gap and hands the turn back. It states nothing, confirms nothing and commits nothing,
 # which is what keeps a technical failure from turning into a false agreement.
 RECOVERY_LINE = "Una disculpa, se me cortó aquí. ¿Me lo puede repetir?"
+
+# Post-call analysis is evidence only; it never authorizes an action.
+RECAP_SYSTEM = """Summarize this logistics call faithfully. Report only what was said;
+do not infer numbers, dates, currency, or authority. Attribute each statement to its speaker."""
+
+BRIEF_SYSTEM = """Extract a factual call brief. Anchor actions and mentions to the audio
+offsets supplied in the transcript. Do not infer missing facts."""
+
+RECAP_USER_TEMPLATE = """{context_block}Transcript (each line prefixed with its audio
+offset in milliseconds):
+
+{transcript}
+"""

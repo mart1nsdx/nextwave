@@ -19,12 +19,14 @@ class Settings(BaseSettings):
     twilio_account_sid: str = ""
     twilio_auth_token: str = ""
     twilio_phone_number: str = ""
+    validate_twilio_signature: bool = True
 
     # --- Reasoning (OpenAI, via the Agents SDK) ---
     openai_api_key: str = ""
     # Not hardcoded: model ids move, and most tutorials online are stale. Verify the
     # current fast model id against OpenAI's docs before filling this in.
     openai_agent_model: str = ""
+    openai_recap_model: str = ""
 
     # --- Speech ---
     deepgram_api_key: str = ""
@@ -35,6 +37,9 @@ class Settings(BaseSettings):
     # "multi" enables ES/EN code-switching within a single utterance, which the judge
     # is likely to do. A single-language code (es, en) is the alternative.
     stt_language: str = "multi"
+    # Aliases for the post-call evidence path. They default to the live STT settings.
+    deepgram_model: str = "nova-3"
+    deepgram_language: str = "multi"
     tts_provider: str = "deepgram"
     # Aura-2 voices that switch between English and Spanish: aquila, carina, diana,
     # javier, selena. Use aura-2-estrella-es for Mexican-accented Spanish only.
@@ -57,6 +62,10 @@ class Settings(BaseSettings):
     supabase_url: str = ""
     supabase_service_role_key: str = ""
     escalation_phone_number: str = ""
+    sendgrid_api_key: str = ""
+    recap_from_email: str = ""
+    recap_from_name: str = "Volta"
+    recap_to_email: str = ""
     public_base_url: str = ""
 
 

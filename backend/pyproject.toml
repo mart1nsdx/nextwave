@@ -49,6 +49,7 @@ asyncio_mode = "auto"
 # backend root on sys.path to `import app`. Until now no test imported the package —
 # test_layering.py reads the source with ast rather than importing it.
 pythonpath = ["."]
+filterwarnings = ["ignore:'audioop' is deprecated:DeprecationWarning"]
 
 [tool.uv]
 package = false

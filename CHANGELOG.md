@@ -36,6 +36,13 @@ did. That failed only once a real call reached the model. Also `AudioSource` gai
   at its defaults `gpt-5-mini` took nine seconds to answer, which on a call is a hang-up.
   If you change `OPENAI_AGENT_MODEL` to a non-reasoning model, drop the `reasoning=` field.
 
+## 2026-08-29T14:10-0500 · domain, repo, ledger, agent, notify, supabase · Martin/claude
+Added the call-evidence, post-call recap and recap-delivery building blocks, including
+the Supabase migration. The incompatible Twilio transport is adapted separately to the
+existing bidirectional voice path.
+→ Affects: everyone. Evidence and recap types are shared contracts; run the new Supabase
+  migration before enabling persisted call review.
+
 ## 2026-08-29T14:02-0500 · scripts · Nacho/claude
 `uv run python -m scripts.point_number` repoints the Twilio number at whatever tunnel is
 running and writes `PUBLIC_BASE_URL` into `.env`, so the server and the webhook cannot
