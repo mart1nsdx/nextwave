@@ -3343,3 +3343,85 @@ redaction failure does not expose fields that should have been omitted before lo
 customer policy overlays. Extensions must preserve global meanings, highest-class inheritance,
 deny-by-default unknowns, deterministic enforcement, migration tests, and explicit USD/schedule
 approval for materially broader compliance controls.
+
+## D48 / Person 2 D-14A — Application-level envelope encryption with a USD 0 demo adapter
+
+**Status:** APPROVED
+
+**Approved by:** Person 2 / human decision owner
+
+**Approved at:** 2026-08-29T17:18-05:00
+
+**Context:** D47 classifies transcripts and authorization evidence as `RESTRICTED`. Provider-level
+encryption alone leaves plaintext visible at the database/service boundary. The decision owner
+selected application-level envelope encryption but requires a free demo alternative or simulation
+rather than silently activating a paid managed KMS.
+
+**Alternatives considered:**
+
+- **A — Provider-managed encryption and TLS only.** Lowest schedule/cost burden but database or
+  provider compromise can expose plaintext restricted data.
+- **B — Application-level envelope encryption behind a key-provider interface.** Separates stored
+  ciphertext from key custody and supports production KMS plus a clearly restricted free demo
+  adapter.
+- **C — Client-side encryption.** Strong infrastructure separation but prevents required server-
+  side transcription, policy, and authorized audit workflows.
+- **D — Ad hoc/custom cryptography and key storage.** Avoids a service dependency but creates
+  unacceptable nonce, algorithm, secret-storage, rotation, and recovery risk.
+
+**Decided:** Alternative B. Restricted transcript content and any later explicitly enumerated
+restricted payload are encrypted by the trusted application using authenticated envelope
+encryption. The persistence layer stores ciphertext plus non-secret cryptographic metadata and a
+wrapped data-encryption key (DEK), never the plaintext DEK. A narrow key-provider interface permits
+a production managed KMS/HSM adapter and a USD 0 demo-only adapter without changing ciphertext or
+policy semantics.
+
+**Demo/cost constraint:** approved incremental monetary spend is USD 0. No cloud billing account,
+paid KMS key, paid operation, HSM, managed Vault, marketplace service, automatic upgrade, or
+overage is authorized. The exact free/simulated adapter remains a separate decision. It must be
+prominently identified in configuration, UI/demo claims, audit evidence, and the security dossier
+as non-production; production mode refuses to start with it.
+
+**Why:** B demonstrates defense beyond database encryption while preserving a clean path to proper
+production key custody. The simulation is confined to custody/orchestration: Volta must still use
+standard, real authenticated encryption rather than fake or reversible demonstration cryptography.
+
+**Trade-off accepted:** losing or corrupting the wrapping key can make retained evidence
+unrecoverable, while compromise of the demo adapter can expose all ciphertext it protects. Key
+availability also becomes a fail-closed runtime dependency, and application-level encryption
+limits database search/indexing over protected bodies.
+
+**Implementation contract:**
+
+- Use a reviewed standard cryptographic library and an approved authenticated-encryption scheme;
+  algorithm, nonce construction, DEK size, key hierarchy/derivation, rotation period, and library
+  require a follow-on decision before implementation. Do not design a new cipher or protocol.
+- Generate a fresh random DEK at the approved envelope scope. Bind ciphertext using authenticated
+  associated data to tenant, record/artifact ID, schema/classification version, purpose, and key-
+  provider/key version so ciphertext or wrapped-key swaps fail authentication.
+- Keep plaintext and unwrapped DEKs only for the shortest processing interval, never in database,
+  logs, traces, exceptions, browser storage, model-retained context, or durable job payloads; clear
+  references where the runtime permits and avoid unnecessary copies.
+- The database stores ciphertext, nonce/algorithm/version, wrapped DEK, key reference/version, AAD
+  schema/version, and integrity-safe linkage. Metadata cannot be caller/model supplied authority.
+- Decryption is a privileged server-side operation composed with D44/D45 authorization, purpose,
+  tenant, retention, and audit gates. Possessing ciphertext, IDs, or a key-service token is not
+  sufficient authorization.
+- Key-provider credentials live only in an approved secret/identity facility, use least privilege,
+  and never enter the repository, conversation, client, model context, transcript, or logs.
+- Provider unavailability, authentication failure, unknown algorithm/key version, AAD mismatch,
+  corruption, or configuration ambiguity fails closed without plaintext fallback or silent key
+  regeneration. Recovery and rotation preserve D42/D46 retention/deletion semantics.
+- Enforce environment separation. Demo ciphertext/keys and synthetic evidence cannot be promoted
+  to production; the production adapter and its current USD costs require explicit approval.
+
+**Verification:** NOT RUN. Required evidence includes ciphertext-only persistence; unique DEKs/
+nonces at the approved scope; AAD tenant/record/schema/purpose swaps; wrapped-DEK/ciphertext swaps;
+tampering; key-provider outage; wrong/missing/rotated key; restart/recovery; logs/traces/exceptions;
+authorization composition; deletion; cross-environment promotion denial; production startup block
+with demo adapter; and proof the demonstration uses real authenticated encryption.
+
+**Would change if:** the selected production platform provides equivalent application-layer
+envelope encryption and independently controlled keys with verifiable semantics. Any weakening,
+new provider, algorithm, paid tier, recovery path, or scope expansion requires explicit security,
+schedule, operational, and USD cost approval.

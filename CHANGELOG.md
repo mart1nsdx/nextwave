@@ -37,6 +37,12 @@ DECISION_LOG D8; `policy/` is still the only thing that authorizes anything.
 → Affects: whoever wires `voice/session.py` to a real operation — pass the composed
 prompt and greeting instead of the module-level `SYSTEM_PROMPT` / `GREETING`. Físico:
 `domain/Operation` and `domain/Mandate` should map *into* `CallContext`, not replace it.
+## 2026-08-29T17:18-0500 · crypto/data/security · Person 2/Codex
+Human-approved D48/D-14A: encrypt restricted content with application-level envelope encryption
+behind a replaceable key-provider boundary; demo incremental spend is fixed at USD 0.
+→ Affects: Person 2/3/4. Store ciphertext/wrapped DEKs only, bind tenant/record/purpose in AAD,
+  fail closed on key errors, label demo custody non-production, and block it in production mode.
+
 ## 2026-08-29T17:15-0500 · domain/data/security · Person 2/Codex
 Human-approved D47/D-12A: classify all data as `PUBLIC`, `INTERNAL`, `CONFIDENTIAL`, or
 `RESTRICTED`; composites inherit the highest source class and unknown fields fail restricted.
