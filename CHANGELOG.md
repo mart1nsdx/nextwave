@@ -25,6 +25,20 @@ invented timestamps is worse than no log, because the ordering lies silently.
 
 ---
 
+## 2026-08-29T13:15-0500 · voice, telephony, config · Nacho/claude
+`realtime/` is now `voice/`. We are not using OpenAI's Realtime API — the voice path is a
+cascade (Deepgram STT → OpenAI via the Agents SDK → Deepgram TTS) that we orchestrate, so
+that barge-in is our code and STT/TTS vendors are swappable. Reasoning in
+`docs/DECISION_LOG.md` D7. `ALLOWED` in `tests/test_layering.py` renames the `realtime`
+row to `voice` and repoints `telephony`. `config.py` drops `OPENAI_REALTIME_MODEL` (now
+orphaned) and adds `OPENAI_AGENT_MODEL`, the Deepgram keys, provider/model selection, and
+six `VAD_*` tunables.
+→ Affects: everyone. `git pull` will leave you with a stale empty `app/realtime/` —
+  delete it. Re-copy `backend/.env.example` to `.env`: the speech and VAD keys are new and
+  `OPENAI_REALTIME_MODEL` is gone. If you were about to import `app.realtime`, it is
+  `app.voice`. Audio is mu-law 8 kHz end to end — do not add a resampling step without
+  reading `voice/frames.py` first.
+
 ## 2026-08-29T12:19-0500 · repo-wide · Diego/claude
 Initial project structure: `backend/` (FastAPI, uv, 10 packages + `domain/` leaf),
 `dashboard/` (Vite + React), `supabase/`, and `docs/ARCHITECTURE.md` justifying every
