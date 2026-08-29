@@ -43,3 +43,9 @@ GREETING = (
     "Buenas, le hablo de Textiles Pacífico por un contenedor en Manzanillo "
     "que necesitamos mover a Guadalajara. ¿Tiene un minuto?"
 )
+
+# Said when the model itself fails mid-turn. Dead air is the worst outcome on a phone
+# call — the counterparty assumes the line dropped and hangs up — so the agent admits the
+# gap and hands the turn back. It states nothing, confirms nothing and commits nothing,
+# which is what keeps a technical failure from turning into a false agreement.
+RECOVERY_LINE = "Una disculpa, se me cortó aquí. ¿Me lo puede repetir?"

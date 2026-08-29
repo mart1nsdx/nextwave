@@ -10,6 +10,7 @@ from collections.abc import AsyncIterator, Sequence
 
 from agents import TResponseInputItem
 
+from app.agent import RECOVERY_LINE
 from app.voice.llm import Thinker
 from app.voice.session import VoiceSession
 from app.voice.simline import SimLine
@@ -74,3 +75,23 @@ async def test_a_clean_turn_records_both_sides() -> None:
 
     assert [m.get("role") for m in session.history] == ["assistant", "user", "assistant"]
     assert session.history[1]["content"] == "sí manejamos esa ruta"
+
+
+class ExplodingThinker:
+    """The model fails mid-turn — a bad key, a timeout, a 500."""
+
+    async def reply(self, history: Sequence[TResponseInputItem]) -> AsyncIterator[str]:
+        raise RuntimeError("the model fell over")
+        yield ""  # unreachable, but it is what makes this an async generator
+
+
+async def test_a_model_failure_does_not_leave_the_line_silent() -> None:
+    """Dead air reads as a dropped call. The turn must come back to the human."""
+    script = [ScriptedUtterance("me da un precio", 100, 400)]
+    line = SimLine(script, tail_ms=400, pace_s=0)
+    session = _session(ExplodingThinker(), script)
+
+    await session.run(line, line)
+
+    assistant = [str(m["content"]) for m in session.history if m.get("role") == "assistant"]
+    assert RECOVERY_LINE in assistant, "a failed turn must still say something"

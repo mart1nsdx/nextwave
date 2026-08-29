@@ -48,7 +48,8 @@ class MediaStreamTransport:
     # --- identity ---------------------------------------------------------------
 
     @property
-    def call_sid(self) -> str:
+    def call_id(self) -> str:
+        """Twilio's CallSid. Named call_id because that is the log field everywhere."""
         return self._call_sid
 
     @property

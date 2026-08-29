@@ -58,6 +58,16 @@ class InboundFrame:
 class AudioSource(Protocol):
     """Counterparty audio arriving from the phone network."""
 
+    @property
+    def call_id(self) -> str:
+        """Identifies this call in the logs.
+
+        On the Protocol rather than passed in separately because it is not known until
+        the transport has connected, and because three carriers are negotiated in
+        parallel — logs that cannot be filtered by call are logs nobody can read.
+        """
+        ...
+
     def frames(self) -> AsyncIterator[InboundFrame]: ...
 
 

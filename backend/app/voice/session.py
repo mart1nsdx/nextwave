@@ -19,7 +19,7 @@ from enum import Enum, auto
 import structlog
 from agents import TResponseInputItem
 
-from app.agent import GREETING, build_agent
+from app.agent import GREETING, RECOVERY_LINE, build_agent
 from app.config import Settings
 
 from .events import FinalTranscript, SpeechStarted, UtteranceEnd
@@ -60,6 +60,7 @@ class VoiceSession:
         self._reply: asyncio.Task[None] | None = None
         self._sink: AudioSink | None = None
         self._voice: TtsSession | None = None
+        self._log = log
 
     @property
     def history(self) -> list[TResponseInputItem]:
@@ -67,6 +68,9 @@ class VoiceSession:
         return list(self._history)
 
     async def run(self, source: AudioSource, sink: AudioSink) -> None:
+        # Bound once, so every line this call produces can be filtered out of the three
+        # conversations running in parallel.
+        self._log = log.bind(call_id=source.call_id)
         stt = await self._stt.connect()
         voice = await self._tts.connect()
         self._sink, self._voice = sink, voice
@@ -101,8 +105,12 @@ class VoiceSession:
             elif isinstance(event, UtteranceEnd):
                 if self._heard:
                     self._reply = asyncio.create_task(self._respond(event.offset_ms))
+                    # Without this, a crash inside the turn is only ever reported by
+                    # asyncio at shutdown as "Task exception was never retrieved", long
+                    # after the call went quiet.
+                    self._reply.add_done_callback(self._note_reply_outcome)
             elif isinstance(event, SpeechStarted):
-                log.debug("speech_started", offset_ms=event.offset_ms)
+                self._log.debug("speech_started", offset_ms=event.offset_ms)
 
     async def _play(self, voice: TtsSession, sink: AudioSink) -> None:
         async for chunk in voice.audio():
@@ -123,7 +131,7 @@ class VoiceSession:
             return
 
         self._history.append({"role": "user", "content": heard})
-        log.info("heard", text=heard, offset_ms=offset_ms)
+        self._log.info("heard", text=heard, offset_ms=offset_ms)
 
         # Stays SPEAKING after generation finishes, because Twilio is still playing the
         # audio out. Resetting here would make the agent deaf to an interruption during
@@ -136,25 +144,39 @@ class VoiceSession:
                 await self._speak(chunk)
             await self._flush()
             self._history.append({"role": "assistant", "content": said})
-            log.info("said", text=said)
+            self._log.info("said", text=said)
         except asyncio.CancelledError:
             # Record only what was handed to the synthesizer. The counterparty may have
             # heard less — playback was still in flight — but never more, so the agent
             # can never later claim it said something the other side never got.
             if said:
                 self._history.append({"role": "assistant", "content": f"{said} [interrumpido]"})
-            log.info("reply_interrupted", spoken_chars=len(said))
+            self._log.info("reply_interrupted", spoken_chars=len(said))
             raise
+        except Exception:
+            # The model failed. Dead air reads as a dropped call and the counterparty
+            # hangs up, so say something and hand the turn back. RECOVERY_LINE states
+            # nothing and confirms nothing: a technical failure must never come out of
+            # the agent's mouth as agreement (invariant #6).
+            self._log.exception("reply_failed", spoken_chars=len(said))
+            self._history.append({"role": "assistant", "content": RECOVERY_LINE})
+            await self._speak(RECOVERY_LINE)
+            await self._flush()
 
     async def _barge_in(self, offset_ms: int) -> None:
         """Stop talking, now. Three cuts, because audio is buffered in three places."""
-        log.info("barge_in", offset_ms=offset_ms)
+        self._log.info("barge_in", offset_ms=offset_ms)
         self._turn = Turn.LISTENING
         if self._sink is not None:
             await self._sink.clear()  # what the phone network already has queued
         if self._voice is not None:
             await self._voice.clear()  # what the synthesizer is still generating
         await self._cancel_reply()  # and the model still producing text
+
+    def _note_reply_outcome(self, task: "asyncio.Task[None]") -> None:
+        """Never let a turn fail silently."""
+        if not task.cancelled() and task.exception() is not None:
+            self._log.error("reply_task_failed", error=repr(task.exception()))
 
     async def _cancel_reply(self) -> None:
         task, self._reply = self._reply, None
@@ -177,7 +199,7 @@ def build_session(settings: Settings) -> VoiceSession:
     return VoiceSession(
         stt=make_stt(settings),
         tts=make_tts(settings),
-        reasoner=Reasoner(build_agent(settings.openai_agent_model)),
+        reasoner=Reasoner(build_agent(settings.openai_agent_model, settings.openai_api_key)),
         vad=VadSettings.from_settings(settings),
         greeting=GREETING,
     )

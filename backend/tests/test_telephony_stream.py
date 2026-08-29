@@ -89,7 +89,7 @@ async def test_offsets_come_from_twilio_not_from_our_clock() -> None:
 
     assert seen == [20, 40]
     assert transport.last_offset_ms == 40
-    assert transport.call_sid == CALL_SID
+    assert transport.call_id == CALL_SID
 
 
 async def test_clear_abandons_pending_marks() -> None:

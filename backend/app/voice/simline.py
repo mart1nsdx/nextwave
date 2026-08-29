@@ -29,6 +29,7 @@ class SimLine:
         self._script = tuple(script)
         self._until_ms = max((u.end_ms for u in script), default=0) + tail_ms
         self._pace_s = pace_s
+        self.call_id = "sim"
         self.played: list[bytes] = []
         self.clears = 0
 

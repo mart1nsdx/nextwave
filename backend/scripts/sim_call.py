@@ -69,12 +69,15 @@ def _thinker(live: bool) -> Thinker:
             "Claro que sí, permítame confirmo. | Le repito para no equivocarme. | "
             "Eso lo tiene que ver una persona del equipo."
         )
-    return Reasoner(build_agent(get_settings().openai_agent_model))
+    settings = get_settings()
+    return Reasoner(build_agent(settings.openai_agent_model, settings.openai_api_key))
 
 
 async def _run(scenario: str, live: bool) -> int:
     script = SCENARIOS[scenario]
-    line = SimLine(script)
+    # A real model needs seconds to answer; a short tail hangs up mid-thought and
+    # every reply looks cancelled.
+    line = SimLine(script, tail_ms=12000 if live else 2000)
     session = VoiceSession(
         stt=FakeStt(script),
         tts=FakeTts(),
