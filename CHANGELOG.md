@@ -37,6 +37,12 @@ DECISION_LOG D8; `policy/` is still the only thing that authorizes anything.
 → Affects: whoever wires `voice/session.py` to a real operation — pass the composed
 prompt and greeting instead of the module-level `SYSTEM_PROMPT` / `GREETING`. Físico:
 `domain/Operation` and `domain/Mandate` should map *into* `CallContext`, not replace it.
+## 2026-08-29T17:15-0500 · domain/data/security · Person 2/Codex
+Human-approved D47/D-12A: classify all data as `PUBLIC`, `INTERNAL`, `CONFIDENTIAL`, or
+`RESTRICTED`; composites inherit the highest source class and unknown fields fail restricted.
+→ Affects: everyone. Enforce labels at every disclosure boundary, minimize model inputs, omit
+  protected bodies before logging, and never let model/customer labels declassify authoritative data.
+
 ## 2026-08-29T17:12-0500 · data/storage/security · Person 2/Codex
 Human-approved D46/D-13E: expired transcripts become inaccessible and leave every active system
 within 24 hours; backup remnants must expire within 30 additional days.

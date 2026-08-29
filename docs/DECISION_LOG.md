@@ -3262,3 +3262,84 @@ without content leakage.
 **Would change if:** verified infrastructure cannot meet the deadline or applicable obligations
 require a shorter period. A longer period is not an implementation convenience: it requires new
 explicit risk, provider, contractual, privacy, schedule, and USD cost approval.
+
+## D47 / Person 2 D-12A — Four-level data classification with highest-class inheritance
+
+**Status:** APPROVED
+
+**Approved by:** Person 2 / human decision owner
+
+**Approved at:** 2026-08-29T17:15-05:00
+
+**Context:** Volta handles public documentation, internal operations, commercial quotations,
+mandates, transcript evidence, authentication material, and audit records. A uniform "private"
+label cannot drive least-privilege access, logging, retention, model disclosure, or export policy.
+
+**Alternatives considered:**
+
+- **A — Four levels: `PUBLIC`, `INTERNAL`, `CONFIDENTIAL`, and `RESTRICTED`.** Distinguishes
+  ordinary commercial data from transcript, authorization, authentication, and security evidence.
+- **B — Three levels: public, internal, and sensitive.** Simpler but gives quotations and highly
+  sensitive authorization/transcript evidence indistinguishable controls.
+- **C — Two levels: public and private.** Fastest but too coarse for deterministic enforcement.
+- **D — Customer-defined classification systems.** Flexible but creates inconsistent semantics,
+  configuration burden, and policy-test explosion during the hackathon.
+
+**Decided:** Alternative A. Every stored field, event, payload, and derived artifact has a schema-
+defined classification. A composite or derivative inherits the highest classification of any
+source field unless a separately approved, deterministic declassification transform proves the
+sensitive content was removed. Customer/model labels cannot lower authoritative classification.
+
+**Classification baseline:**
+
+- `PUBLIC`: material explicitly approved for unrestricted publication, such as public product
+  documentation. Data is not public merely because it appears in a public-source workflow.
+- `INTERNAL`: low-sensitivity team operational material not approved for public release, such as
+  non-customer synthetic test coordination and ordinary internal run status.
+- `CONFIDENTIAL`: tenant/account information, carrier directory records, quotations, structured
+  commercial terms, routes, schedules, comprehensive costs, FX snapshots, pre-agreements,
+  commitment messages, and non-public business configuration.
+- `RESTRICTED`: transcript bodies; credentials, authentication factors and secrets; mandate
+  authorization evidence; transaction-bound approvals/capabilities; security-sensitive audit
+  evidence; deletion/access tombstones; and any raw content capable of granting, reconstructing,
+  or materially attacking authority. Secrets are never intentionally stored in business records.
+
+**Why:** A provides enough separation to minimize model, logging, support, and operator exposure
+without building a customer-specific policy language. Highest-class inheritance prevents a benign
+wrapper or summary label from laundering sensitive fields into a weaker channel.
+
+**Trade-off accepted:** schemas and transformations require explicit labels and enforcement tests.
+Overclassification may reduce observability or convenience, but uncertainty fails toward the
+higher class until a human-approved schema decision resolves it.
+
+**Implementation contract:**
+
+- Maintain a versioned server-side classification registry at field/event/artifact level. Unknown,
+  unlabeled, dynamically added, or conflicting fields default to `RESTRICTED` and fail closed at
+  disclosure boundaries.
+- Enforce classification at collection, persistence, query, API serialization, model/tool context,
+  logging/tracing, analytics, notifications, export, backup, and deletion—not only in the UI.
+- Models receive only the minimal allowlisted fields required for the current proposal. `RESTRICTED`
+  data is excluded by default; transcript use required for live interpretation is a narrowly scoped
+  processing path, not permission to retain it in model context, traces, training, or later calls.
+- Logs contain opaque references and reason codes rather than confidential/restricted bodies.
+  Redaction is defense-in-depth; prohibited fields must be omitted before the logging boundary.
+- A derived summary remains at the highest source class unless a versioned deterministic transform
+  with tests explicitly maps it lower. Model-generated summaries cannot declassify data.
+- Cross-tenant access is prohibited at every class. Classification never substitutes for tenant,
+  role, purpose, authentication, retention, or transaction authorization checks.
+- Public release requires an explicit trusted approval transition and immutable provenance;
+  repository location, URL availability, caller statements, or model output cannot mark data public.
+- Audit each allowed/denied disclosure using metadata and classification reason codes without
+  copying the protected content into the audit record.
+
+**Verification:** NOT RUN. Required evidence includes each class at every disclosure boundary;
+unknown-field fail-closed behavior; composites with one higher-class field; nested/renamed/encoded
+fields; model/log/trace/notification/export leakage; attempted model/customer relabeling;
+deterministic summary declassification; cross-tenant requests; schema-version drift; and proof that
+redaction failure does not expose fields that should have been omitted before logging.
+
+**Would change if:** validated product requirements need finer regulated-data categories or
+customer policy overlays. Extensions must preserve global meanings, highest-class inheritance,
+deny-by-default unknowns, deterministic enforcement, migration tests, and explicit USD/schedule
+approval for materially broader compliance controls.
