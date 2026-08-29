@@ -25,6 +25,17 @@ invented timestamps is worse than no log, because the ordering lies silently.
 
 ---
 
+## 2026-08-29T14:25-0500 · agent, voice · Nacho/claude
+`build_agent(model, api_key, tools=None)` — the key is now a required argument. It has to
+be: pydantic-settings loads `.env` into a `Settings` object and never exports to
+`os.environ`, so any library that reads the environment itself sees nothing, and the SDK
+did. That failed only once a real call reached the model. Also `AudioSource` gained a
+`call_id` property, and SDK tracing is off — it uploads what was said on the call.
+→ Affects: whoever picks up `agent/` and `tools/`. Call `build_agent` with the key.
+  Model settings are tuned for the phone (minimal reasoning, low verbosity, 12s timeout):
+  at its defaults `gpt-5-mini` took nine seconds to answer, which on a call is a hang-up.
+  If you change `OPENAI_AGENT_MODEL` to a non-reasoning model, drop the `reasoning=` field.
+
 ## 2026-08-29T14:02-0500 · scripts · Nacho/claude
 `uv run python -m scripts.point_number` repoints the Twilio number at whatever tunnel is
 running and writes `PUBLIC_BASE_URL` into `.env`, so the server and the webhook cannot
