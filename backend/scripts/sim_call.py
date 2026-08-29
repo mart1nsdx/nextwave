@@ -11,6 +11,8 @@ tokens and needs OPENAI_API_KEY and OPENAI_AGENT_MODEL, so it is off by default.
 
 import argparse
 import asyncio
+import math
+import statistics
 from collections.abc import AsyncIterator, Sequence
 
 from agents import TResponseInputItem
@@ -70,7 +72,14 @@ def _thinker(live: bool) -> Thinker:
             "Eso lo tiene que ver una persona del equipo."
         )
     settings = get_settings()
-    return Reasoner(build_agent(settings.openai_agent_model, settings.openai_api_key))
+    return Reasoner(
+        build_agent(
+            settings.openai_agent_model,
+            settings.openai_api_key,
+            reasoning_effort=settings.openai_reasoning_effort,
+            max_output_tokens=settings.openai_max_output_tokens,
+        )
+    )
 
 
 async def _run(scenario: str, live: bool) -> int:
@@ -84,6 +93,7 @@ async def _run(scenario: str, live: bool) -> int:
         reasoner=_thinker(live),
         vad=VadSettings.from_settings(get_settings()),
         greeting=GREETING,
+        latency_evidence="SIMULATED_TRANSPORT_LIVE_LLM" if live else "SIMULATED",
     )
 
     await session.run(line, line)
@@ -93,7 +103,41 @@ async def _run(scenario: str, live: bool) -> int:
         who = "VOLTA " if message.get("role") == "assistant" else "CARRIER"
         print(f"{who}  {message.get('content')}")
     print(f"\naudio played back: {line.played_ms} ms   barge-in cuts: {line.clears}")
+    _print_latency(session)
     return 0
+
+
+def _print_latency(session: VoiceSession) -> None:
+    print("\n--- turn latency (monotonic wall time) ---")
+    print("turn  evidence                       stt      model    tts      end-to-end  result")
+    for sample in session.latency_samples:
+        result = "INTERRUPTED" if sample.interrupted else "COMPLETE"
+        print(
+            f"{sample.turn:<5} {sample.evidence:<30} "
+            f"{_ms(sample.stt_endpoint_ms):<8} {_ms(sample.model_first_chunk_ms):<8} "
+            f"{_ms(sample.tts_first_audio_ms):<8} "
+            f"{_ms(sample.end_to_end_first_audio_ms):<11} {result}"
+        )
+
+    audible = [
+        sample.end_to_end_first_audio_ms
+        for sample in session.latency_samples
+        if sample.end_to_end_first_audio_ms is not None
+    ]
+    if audible:
+        ordered = sorted(audible)
+        p95 = ordered[math.ceil(0.95 * len(ordered)) - 1]
+        print(
+            f"first-audio summary: n={len(ordered)} "
+            f"median={statistics.median(ordered):.1f} ms p95={p95:.1f} ms max={max(ordered):.1f} ms"
+        )
+    else:
+        print("first-audio summary: no audible model response observed")
+    print("SIMULATED labels are not PSTN latency evidence.")
+
+
+def _ms(value: float | None) -> str:
+    return "N/A" if value is None else f"{value:.1f}ms"
 
 
 def main() -> int:

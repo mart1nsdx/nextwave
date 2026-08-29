@@ -42,6 +42,7 @@ def _session(thinker: Thinker, script: list[ScriptedUtterance]) -> VoiceSession:
         reasoner=thinker,
         vad=VadSettings(barge_in_min_ms=120),
         greeting="Buenas.",
+        latency_evidence="SIMULATED_TEST",
     )
 
 
@@ -75,6 +76,13 @@ async def test_a_clean_turn_records_both_sides() -> None:
 
     assert [m.get("role") for m in session.history] == ["assistant", "user", "assistant"]
     assert session.history[1]["content"] == "sí manejamos esa ruta"
+    assert len(session.latency_samples) == 1
+    latency = session.latency_samples[0]
+    assert latency.evidence == "SIMULATED_TEST"
+    assert latency.model_first_chunk_ms is not None
+    assert latency.tts_first_audio_ms is not None
+    assert latency.end_to_end_first_audio_ms is not None
+    assert not latency.interrupted
 
 
 class ExplodingThinker:
@@ -95,3 +103,18 @@ async def test_a_model_failure_does_not_leave_the_line_silent() -> None:
 
     assistant = [str(m["content"]) for m in session.history if m.get("role") == "assistant"]
     assert RECOVERY_LINE in assistant, "a failed turn must still say something"
+
+
+async def test_interrupted_turn_records_only_audio_that_started() -> None:
+    script = [
+        ScriptedUtterance("conteste", 100, 300),
+        ScriptedUtterance("lo interrumpo", 500, 900),
+    ]
+    line = SimLine(script, tail_ms=300, pace_s=0)
+    session = _session(StallingThinker(), script)
+
+    await session.run(line, line)
+
+    interrupted = [sample for sample in session.latency_samples if sample.interrupted]
+    assert interrupted
+    assert interrupted[0].end_to_end_first_audio_ms is not None

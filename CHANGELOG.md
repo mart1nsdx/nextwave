@@ -25,6 +25,13 @@ invented timestamps is worse than no log, because the ordering lies silently.
 
 ---
 
+## 2026-08-29T18:57-0500 · voice/agent/observability/security · Person 2/Codex
+Added evidence-labeled sentence latency telemetry (STT endpoint, model first chunk, TTS first audio,
+end-to-end, completion and barge-in), CLI median/p95/max summaries, shorter streaming chunks, and a
+compiled runtime prompt under half the canonical prompt size without removing security controls.
+→ Affects: voice/security/demo. One live-LLM fake-transport sample observed 1,154.1 ms first audio;
+  this is not PSTN evidence. Keep authorization in policy; collect 20+ live turns before claims.
+
 ## 2026-08-29T18:09-0500 · domain/policy/tools/agent/security · Person 2/Codex
 Implemented the first executable deterministic security kernel: immutable mandates/proposals/FX
 evidence, comprehensive buffered USD evaluation, reason-coded fail-closed decisions, exact recap

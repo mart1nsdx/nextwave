@@ -3961,3 +3961,38 @@ as non-binding pre-agreements and official email as a later policy-mediated comm
 
 **Verification:** OBSERVED through unit, layering, prompt-contract, replay, strict-type, lint, and
 full local test execution. Live voice behavior and real provider effects remain NOT RUN.
+
+## D66 / Person 2 D-16C — Measured low-latency cascade without moving authorization
+
+**Status:** APPROVED
+
+**Approved by:** Person 2 / human decision owner
+
+**Approved at:** 2026-08-29T18:57:00-05:00
+
+**Context:** the owner requested sentence-level measurement and optimization for real-time speech
+while the deterministic kernel remains the only authority. The prior simulator reported audio
+duration but could not distinguish endpointing, model, TTS, or first-audio delay.
+
+**Alternatives considered:** A: measure only total call time; B: replace the cascade with a new
+speech stack; C: instrument every latency boundary and optimize prompt/chunk/model settings inside
+the existing cascade; D: use a second model as a safety checker. A is not diagnostic; B adds rewrite
+risk; D adds probabilistic latency without authority. C preserves team work and measures bottlenecks.
+
+**Decided:** Alternative C. Use monotonic per-turn timestamps for STT endpoint delay, first model
+chunk, TTS-to-first-frame, end-to-end first audio, response completion, and barge-in clear. Every
+sample carries an evidence label (`SIMULATED`, `SIMULATED_TRANSPORT_LIVE_LLM`, or `LIVE_PSTN`). Keep
+the canonical long personality prompt as documentation and compile a security-equivalent runtime
+prompt under half its size, with stable rules before dynamic operation data. Use the configured
+model's minimal supported reasoning, 300 output tokens, and shorter clause chunks. Authorization,
+ranking, commitment preparation, and single-use claim remain deterministic and unchanged.
+
+**Observed evidence:** one live-LLM/fake-STT/fake-TTS turn produced first model chunk at 1,153.6 ms,
+first audio at 1,154.1 ms, and completed at 1,456.1 ms. This single sample meets the provisional
+1.5-second median target but cannot establish a median, p95, network, STT, TTS, or PSTN claim. A
+separate attempted 160-token/low-effort profile failed closed with `response.incomplete`; an
+unsupported `none` effort for the configured `gpt-5-mini` also failed closed. Both were rejected.
+
+**Verification:** automated latency/chunk/prompt tests plus full local verification are required.
+At least 20 live turns and real PSTN/STT/TTS measurement remain NOT RUN; report median, nearest-rank
+p95, maximum, interruption cases, and provider/model configuration before tuning thresholds further.
