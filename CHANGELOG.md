@@ -37,6 +37,12 @@ DECISION_LOG D8; `policy/` is still the only thing that authorizes anything.
 → Affects: whoever wires `voice/session.py` to a real operation — pass the composed
 prompt and greeting instead of the module-level `SYSTEM_PROMPT` / `GREETING`. Físico:
 `domain/Operation` and `domain/Mandate` should map *into* `CallContext`, not replace it.
+## 2026-08-29T17:08-0500 · identity/data/security · Person 2/Codex
+Human-approved D44/D-13C: transcript bodies are restricted to the tenant owner or explicitly
+assigned auditor/security role, with fresh TOTP and an audit event for every access attempt.
+→ Affects: Person 2/3/4. Separate body from metadata, deny models/ordinary operators, prevent
+  snippets and cache leakage, reauthorize each request, and keep bulk export disabled.
+
 ## 2026-08-29T17:03-0500 · voice/data/security · Person 2/Codex
 Human-approved D43/D-13B: play a deterministic notice that calls are monitored and transcribed
 for audit, with transcripts retained one year; do not ask for or infer consent.

@@ -3063,3 +3063,73 @@ recording; correct one-year wording; and proof that notice completion grants no 
 **Would change if:** legal review, carrier contracts, customer policy, or supported-jurisdiction
 requirements demand affirmative consent or different disclosures. Such a change must be explicit,
 jurisdiction-scoped, versioned, and tested; the model cannot choose the applicable regime.
+
+## D44 / Person 2 D-13C — Restricted and audited transcript-body access
+
+**Status:** APPROVED
+
+**Approved by:** Person 2 / human decision owner
+
+**Approved at:** 2026-08-29T17:08-05:00
+
+**Context:** D42 retains transcripts for one year, creating a sensitive evidence store containing
+carrier speech and potentially commercial or personal data. Ordinary authentication, possession
+of an operation identifier, or model access must not be sufficient to retrieve transcript bodies.
+
+**Alternatives considered:**
+
+- **A — Restricted audit access.** Permit only the tenant owner or an explicitly assigned
+  auditor/security role, require fresh TOTP for body access, audit every attempt, and prohibit
+  bulk export by default.
+- **B — Every authenticated tenant operator.** Operationally simple but exposes complete call
+  content to users who may need only status or structured terms.
+- **C — Platform security administrators only.** Minimizes tenant access but prevents customers
+  from investigating their own negotiations without platform escalation.
+- **D — Model-accessible transcripts.** Enables automation and analytics but expands prompt-
+  injection, data-exfiltration, and unintended secondary-use paths.
+
+**Decided:** Alternative A. Transcript metadata and transcript bodies are separate resources.
+Only the owning tenant's authenticated owner or a user with an explicitly assigned auditor/security
+role may request a body, and each body-access session requires fresh TOTP. Models, callers,
+ordinary operators, carrier identities, public/support links, and generic service integrations
+receive no transcript-read capability. Bulk export is disabled by default.
+
+**Why:** A supports legitimate customer audit and incident investigation while applying least
+privilege, step-up authentication, tenant isolation, and an observable access trail. It avoids
+making a year of transcripts convenient context for compromised accounts or injected models.
+
+**Trade-off accepted:** investigations require more friction and administrative role management.
+Users without the required role cannot self-serve transcript bodies, even if they participated in
+the operation; summarized structured terms may be provided separately under their own policy.
+
+**Implementation contract:**
+
+- Assign and revoke auditor/security roles only through the authoritative authenticated admin
+  path. Roles are tenant-scoped, deny by default, non-self-assignable, and never inferred from
+  email domain, call identity, model output, operation participation, or possession of an ID.
+- Require a fresh server-verified TOTP challenge before the first transcript-body read in a
+  short-lived access session. Bind the session to actor, tenant, purpose, device/session, and
+  maximum expiry; the exact lifetime requires separate approval before implementation.
+- Reauthorize every request server-side for tenant ownership, current role, current access session,
+  transcript existence/retention state, and any legal-hold/restriction state. Object identifiers
+  are never authorization.
+- Default APIs and lists expose only minimized metadata and must not embed transcript snippets.
+  Search indexes, browser previews, notifications, error messages, logs, traces, analytics, and
+  model context must not receive transcript bodies.
+- Disable bulk download/export and cross-call transcript search until separately approved. Any
+  emergency platform access requires a separately defined break-glass policy; no implicit support
+  or database-administrator exception is authorized here.
+- Append an immutable audit event for every allowed and denied body-access attempt containing the
+  actor, tenant, transcript/call reference, purpose, authentication assurance, timestamp, result,
+  reason code, and request correlation—not the transcript body or authentication secret.
+- Revocation, tenant removal, session expiry, transcript expiry, or authorization uncertainty
+  fails closed immediately. Cached pages and downloadable artifacts must not outlive access.
+
+**Verification:** NOT RUN. Required evidence includes owner and assigned-role access; ordinary
+operator/model/caller denial; cross-tenant IDOR attempts; revoked role/session; missing/stale TOTP;
+direct API and guessed-ID access; list/search/error/log/trace leakage; allowed and denied audit
+events; concurrent revocation; transcript expiry; browser caching; and proof bulk export is absent.
+
+**Would change if:** validated customer workflows require delegated reviewers or regulated export.
+Any expansion must define least-privilege scope, authentication strength, export encryption,
+recipient controls, expiry/revocation, auditability, and abuse limits before access is enabled.
