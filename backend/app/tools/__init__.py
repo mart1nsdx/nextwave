@@ -9,3 +9,19 @@ policy.evaluate(). One directory answers "what can the model do?" via `ls`.
 Every tool here is `propose_*` or a read. No tool mutates state without a policy gate,
 and adding one is an architectural decision — flag it in the PR, don't just ship it.
 """
+
+from .security import (
+    AuditEvent,
+    CommitmentCoordinator,
+    ProposalTools,
+    ToolResult,
+    ToolStatus,
+)
+
+__all__ = [
+    "AuditEvent",
+    "CommitmentCoordinator",
+    "ProposalTools",
+    "ToolResult",
+    "ToolStatus",
+]

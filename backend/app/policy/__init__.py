@@ -8,3 +8,7 @@ Unit-testable with zero mocks. The price cap is an `if` statement, never a promp
 Invariant #1 ("the LLM never writes a commitment") holds because this package cannot
 reach anything that talks to a model. Enforced by tests/test_layering.py.
 """
+
+from .engine import evaluate_quote, require_preagreement_evidence, select_best
+
+__all__ = ["evaluate_quote", "require_preagreement_evidence", "select_best"]

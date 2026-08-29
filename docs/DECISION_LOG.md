@@ -3912,3 +3912,52 @@ COMMITTED; manual/live-phone inspection and residual risks appear in the dossier
 
 **Verification:** NOT RUN. Final claim review compares every slide/README/demo label to immutable test,
 provider, cost, and manual evidence; unsupported language blocks submission until removed or proven.
+
+## D64 / Person 2 D-00B — Development authorized on the rebased Person 2 branch
+
+**Status:** APPROVED
+
+**Approved by:** Person 2 / human decision owner
+
+**Approved at:** 2026-08-29T18:09:00-05:00
+
+**Context:** D62 paused implementation pending broader organizer rules. After rebasing current main,
+the owner explicitly instructed Codex to accept the integrated changes and implement the security and
+tool layer on `docs/approve-d01-reference-monitor`.
+
+**Alternatives considered:** A: retain the D62 hold; B: implement only deterministic, testable
+security/tool code on the Person 2 branch while keeping live external effects disabled; C: implement
+and exercise live calls/email immediately; D: write directly to main. A does not follow the new human
+instruction; C creates monetary and real-world side effects without configured evidence; D violates
+the PR workflow. B advances the authorized work without spending money or contacting third parties.
+
+**Decided:** Alternative B. This explicit authorization supersedes D62's implementation hold for
+local and branch development. It does not authorize direct changes to main, real calls, real email,
+payments, secret exposure, or claims that unexecuted live tests passed.
+
+**Verification:** OBSERVED for local implementation checks recorded in the accompanying changelog;
+live-provider, live-phone, persistence, and manual/visual evidence remain NOT RUN.
+
+## D65 / Person 2 D-16B — Preserve the integrated cascade and apply the kernel around it
+
+**Status:** APPROVED
+
+**Approved by:** Person 2 / human decision owner
+
+**Approved at:** 2026-08-29T18:09:00-05:00
+
+**Context:** rebased main contains the working STT → LLM → TTS cascade and the partners' composed
+multilingual negotiation personality, while earlier Person 2 D58 described a Realtime implementation.
+
+**Alternatives considered:** A: preserve the cascade and make each model/tool output an untrusted
+proposal; B: discard it for Realtime; C: maintain both stacks. A retains working team code and one
+test surface; B adds rewrite and merge risk; C doubles vendor, cost, and security surfaces.
+
+**Decided:** Alternative A. D65 supersedes D58's Realtime-specific implementation selection. The
+security contract is transport-independent: the cascade proposes typed data, deterministic policy
+authorizes, and only a separate server-side capability can claim an exact prepared payload once.
+The partners' voice personality remains, with authority wording corrected to describe phone results
+as non-binding pre-agreements and official email as a later policy-mediated commitment attempt.
+
+**Verification:** OBSERVED through unit, layering, prompt-contract, replay, strict-type, lint, and
+full local test execution. Live voice behavior and real provider effects remain NOT RUN.

@@ -1,11 +1,137 @@
-"""One test per row of docs/UGLY_CASES.md.
+"""Hostile side-effect and replay cases at the trusted tool boundary."""
 
-That table is the test suite, not documentation. When you handle a new adversarial case,
-add the row and the test in the same commit.
-"""
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 
 import pytest
 
+from app.domain import CommitmentMode, CostComponent, Mandate, QuoteProposal, ReasonCode
+from app.tools import CommitmentCoordinator, ProposalTools, ToolStatus
 
-@pytest.mark.skip(reason="scaffold: cases land with the policy engine")
-def test_boss_already_approved_is_outside_mandate() -> None: ...
+NOW = datetime(2026, 8, 29, 18, 0, tzinfo=UTC)
+
+
+def _mandate(mode: CommitmentMode = CommitmentMode.AUTONOMOUS, version: int = 1) -> Mandate:
+    return Mandate(
+        mandate_id="M-1",
+        version=version,
+        owner_id="owner",
+        operation_id="OP-1",
+        max_all_in_usd=Decimal("1000"),
+        pickup_not_before=NOW + timedelta(days=1),
+        pickup_not_after=NOW + timedelta(days=3),
+        allowed_equipment=frozenset({"dry-van"}),
+        commitment_mode=mode,
+    )
+
+
+def _proposal(**changes: object) -> QuoteProposal:
+    values: dict[str, object] = {
+        "proposal_id": "P-1",
+        "operation_id": "OP-1",
+        "carrier_id": "carrier",
+        "carrier_contact_id": "verified-contact",
+        "components": (CostComponent(name="all-in", amount=Decimal("900"), currency="USD"),),
+        "cost_is_final": True,
+        "pickup_at": NOW + timedelta(days=2),
+        "equipment": "dry-van",
+        "valid_until": NOW + timedelta(hours=1),
+        "source_call_id": "CA-1",
+        "source_event_id": "EV-1",
+        "transcript_anchor_ms": 4200,
+        "carrier_confirmed_exact_recap": True,
+        "confirmed_at": NOW,
+    }
+    values.update(changes)
+    return QuoteProposal(**values)  # type: ignore[arg-type]
+
+
+def test_boss_already_approved_is_outside_mandate() -> None:
+    tools = ProposalTools()
+    quote = _proposal(
+        components=(CostComponent(name="all-in", amount=Decimal("10500"), currency="USD"),)
+    )
+    tools.propose_quote(quote, now=NOW)
+    result = CommitmentCoordinator(tools).evaluate_all(_mandate(), {}, now=NOW)[0][1]
+    assert result.reason is ReasonCode.OUTSIDE_MANDATE
+
+
+def test_webhook_redelivery_is_idempotent() -> None:
+    tools = ProposalTools()
+    quote = _proposal()
+    assert tools.propose_quote(quote, now=NOW).status is ToolStatus.ACCEPTED
+    assert tools.propose_quote(quote, now=NOW).status is ToolStatus.DUPLICATE
+    assert (
+        tools.propose_quote(_proposal(proposal_id="P-attacker"), now=NOW).reason
+        is ReasonCode.REPLAYED_EVENT
+    )
+    assert len(tools.audit_events) == 1
+
+
+def test_human_mode_requires_transaction_approval() -> None:
+    tools = ProposalTools()
+    tools.propose_quote(_proposal(), now=NOW)
+    with pytest.raises(ValueError, match=ReasonCode.HUMAN_APPROVAL_REQUIRED):
+        CommitmentCoordinator(tools).prepare(
+            commitment_id="C-1",
+            proposal_id="P-1",
+            mandate=_mandate(CommitmentMode.HUMAN_ESCALATION),
+            fx={},
+            canonical_email="Official terms",
+            now=NOW,
+        )
+
+
+def test_prepared_commitment_is_single_use_and_revalidates_mandate() -> None:
+    tools = ProposalTools()
+    tools.propose_quote(_proposal(), now=NOW)
+    coordinator = CommitmentCoordinator(tools)
+    current = _mandate()
+    coordinator.prepare(
+        commitment_id="C-1",
+        proposal_id="P-1",
+        mandate=current,
+        fx={},
+        canonical_email="Official terms\r\nReference OP-1",
+        now=NOW,
+    )
+    assert coordinator.claim_once("C-1", current, {}, now=NOW) == "Official terms\nReference OP-1"
+    with pytest.raises(ValueError, match=ReasonCode.REPLAYED_EVENT):
+        coordinator.claim_once("C-1", current, {}, now=NOW)
+
+
+def test_changed_mandate_invalidates_prepared_commitment() -> None:
+    tools = ProposalTools()
+    tools.propose_quote(_proposal(), now=NOW)
+    coordinator = CommitmentCoordinator(tools)
+    coordinator.prepare(
+        commitment_id="C-1",
+        proposal_id="P-1",
+        mandate=_mandate(),
+        fx={},
+        canonical_email="Official terms",
+        now=NOW,
+    )
+    with pytest.raises(ValueError, match=ReasonCode.MANDATE_MISMATCH):
+        coordinator.claim_once("C-1", _mandate(version=2), {}, now=NOW)
+
+
+def test_expired_prepare_never_dispatches() -> None:
+    tools = ProposalTools()
+    tools.propose_quote(_proposal(), now=NOW)
+    coordinator = CommitmentCoordinator(tools)
+    coordinator.prepare(
+        commitment_id="C-1",
+        proposal_id="P-1",
+        mandate=_mandate(),
+        fx={},
+        canonical_email="Official terms",
+        now=NOW,
+    )
+    with pytest.raises(ValueError, match=ReasonCode.STALE_EVIDENCE):
+        coordinator.claim_once("C-1", _mandate(), {}, now=NOW + timedelta(seconds=31))
+
+
+def test_model_surface_has_no_commit_or_send_capability() -> None:
+    public = {name for name in dir(ProposalTools) if not name.startswith("_")}
+    assert public == {"audit_events", "proposals_for", "propose_quote", "read_proposal"}

@@ -25,6 +25,15 @@ invented timestamps is worse than no log, because the ordering lies silently.
 
 ---
 
+## 2026-08-29T18:09-0500 · domain/policy/tools/agent/security · Person 2/Codex
+Implemented the first executable deterministic security kernel: immutable mandates/proposals/FX
+evidence, comprehensive buffered USD evaluation, reason-coded fail-closed decisions, exact recap
+evidence, deterministic ranking, idempotent proposal tools, and a 30-second single-use commitment
+claim. Preserved the partners' cascade/personality while correcting commitment wording.
+→ Affects: everyone. Models receive proposal-only authority; external adapters must consume only a
+  freshly revalidated server claim. No live calls/email/payment were run; provider integration,
+  persistent repository adapters, dashboard authorization, and live/manual evidence remain pending.
+
 ## 2026-08-29T17:45-0500 · docs/architecture/security · Person 2/Codex
 Published the 30-page `VOLTA_SECURITY_POLICY_ARCHITECTURE.pdf`: one-sentence summary, complete
 plain-language flow, eight vector flow diagrams, controls, schedule, costs, D1-D63 index and sources.
