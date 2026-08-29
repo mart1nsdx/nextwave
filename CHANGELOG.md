@@ -37,6 +37,11 @@ DECISION_LOG D8; `policy/` is still the only thing that authorizes anything.
 → Affects: whoever wires `voice/session.py` to a real operation — pass the composed
 prompt and greeting instead of the module-level `SYSTEM_PROMPT` / `GREETING`. Físico:
 `domain/Operation` and `domain/Mandate` should map *into* `CallContext`, not replace it.
+## 2026-08-29T16:38-0500 · notify/identity/security · Person 2/Codex
+Human-approved D35/D-04J: carrier-facing Resend email uses an existing team-controlled
+domain or delegated subdomain; the exact domain remains unresolved and must not be invented.
+→ Affects: Person 2/3/4. Verify ownership and SPF/DKIM/DMARC independently, isolate DNS
+  changes, allowlist headers, and fail closed until production identity is approved.
 
 ## 2026-08-29T16:37-0500 · notify/policy/security · Person 2/Codex
 Human-approved D34/D-04I: Resend serves two strictly separate email capabilities—a visibly

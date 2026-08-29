@@ -2351,3 +2351,87 @@ successful recap can never authorize or represent commitment or payment.
 or recipients require a different verified channel. A second provider or dashboard-only recap
 requires cost, privacy, security, routing, failover, and state-semantics approval; it cannot be
 introduced as an automatic fallback.
+
+## D35 / Person 2 D-04J — Existing team-controlled email domain or subdomain
+
+**Status:** APPROVED
+
+**Approved by:** Person 2 / human decision owner
+
+**Approved at:** 2026-08-29T16:38-05:00
+
+**Context:** D33/D34 require authenticated carrier-facing email through Resend, which needs
+a verified sending identity. The architecture must decide whether to reuse a team-controlled
+domain, purchase a dedicated domain, rely on a provider test domain, or use personal identity.
+
+**Alternatives considered:**
+
+- **A — Existing team-controlled domain or delegated subdomain.** No new registration cost
+  when suitable ownership exists; supports isolated DNS records and stable project ownership.
+- **B — Purchase a dedicated Volta domain.** Clear isolation but adds registration/renewal,
+  tax/payment, ownership, recovery, and DNS-administration decisions.
+- **C — Resend testing domain.** Useful for restricted development recipients but unsuitable
+  as the official carrier-facing commitment identity.
+- **D — Personal email/domain.** Fast but mixes personal and project identity and weakens
+  continuity, ownership, recovery, and auditability.
+
+**Decided:** Alternative A. Use an existing domain controlled by the team or a dedicated
+subdomain delegated by its authorized administrator. The exact domain is not yet known and
+remains an explicit unresolved input; it must never be inferred or invented. No live recap
+or commitment email is enabled until ownership and DNS control are verified and the approved
+SPF, DKIM, DMARC, sender, reply-to, and recovery configuration passes review.
+
+**Why:** A avoids unnecessary monetary cost while establishing a stable organizational
+identity separable from individual accounts. A delegated subdomain can isolate Volta's
+sending reputation and credentials without purchasing a new domain.
+
+**Trade-off accepted:** Volta depends on the domain owner and DNS administrator for timely,
+correct configuration and recovery. Existing-domain reputation or conflicting SPF/DMARC
+policy can affect delivery. DNS changes can impact other mail systems if scoped incorrectly.
+
+**Cost and scope contract:**
+
+- Incremental domain-registration cost is USD 0 only if an appropriate team-controlled
+  domain/subdomain already exists and its administrator approves use. Existing renewal,
+  registrar, DNS-hosting, administration, monitoring, and staff costs still exist but are
+  not newly incurred by Volta under this decision.
+- Any domain purchase, paid DNS service, certificate, deliverability service, or registrar
+  change requires a separately itemized USD cost decision. Volta cannot purchase automatically.
+- Resend Free plan/domain limits remain governed by D33/D34. Domain reuse does not grant
+  permission to exceed quota or add providers.
+
+**Implementation contract:**
+
+- Obtain the exact ASCII/IDNA-canonical domain or delegated subdomain from an authenticated
+  authorized team/domain administrator. Record ownership authority, intended purpose,
+  registrar/DNS provider, approver, review timestamp, and non-secret evidence.
+- Prefer a dedicated subdomain when available to isolate sending reputation and DNS changes.
+  Do not modify the organizational apex or existing MX/SPF/DMARC records without explicit
+  administrator review and a documented impact/rollback plan.
+- Configure only the DNS records issued/required for the approved Resend project, verify them
+  through both provider status and independent DNS lookup, and preserve record names/types/
+  non-secret values, TTLs, timestamps, and verification evidence. Never expose API credentials.
+- SPF must not create multiple conflicting SPF records or exceed lookup limits. DKIM selectors
+  are provider-bound and reviewed. DMARC alignment/policy/reporting must be explicitly approved
+  before enforcement changes; do not weaken an existing organizational policy to make setup pass.
+- Allowlist exact `From`, envelope sender where visible, display name, and `Reply-To` separately
+  for recap and commitment flows. Models, callers, carriers, tenants, and request payloads cannot
+  choose or override headers/domains.
+- Production mode fails closed when provider domain verification, DNS evidence, approved sender,
+  or alignment status is absent/failed/stale. Test-domain messages are visibly non-production
+  and can never transition a real operation.
+- Define administrator access with least privilege and MFA, recovery ownership, credential/
+  DNS rotation, offboarding, and periodic verification before live use. Personal account loss
+  must not orphan the domain or provider project.
+- Monitor bounces, complaints, spoofing/alignment failures, unexpected DNS changes, and domain
+  verification loss. Such events pause affected sends without changing mandate or commitment truth.
+
+**Verification:** NOT RUN. Required evidence includes exact-domain approval, IDNA/confusable
+names, delegated-subdomain isolation, existing SPF/DMARC conflict, DKIM selector validation,
+independent DNS lookup, wrong/unverified/stale provider domain, sender/reply-to/header spoofing,
+DNS change/rollback, administrator MFA/offboarding, test-versus-production separation, and
+fail-closed behavior after verification or alignment loss.
+
+**Would change if:** no suitable existing domain is available or its owner rejects delegation.
+Then a dedicated purchase or another organizational domain requires its own ownership, USD cost,
+privacy, DNS, recovery, and reputation decision; personal identity is not an automatic fallback.
