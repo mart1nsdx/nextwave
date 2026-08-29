@@ -144,3 +144,2110 @@ it.
 
 **Would change if:** a figure leaks on a live call, or a judge extracts one. The fix then
 is to stop rendering it — not to add another sentence asking the model more nicely.
+
+---
+
+# Person 2 security and policy decisions
+
+## D1 / Person 2 D-01 — Deterministic reference monitor plus defense-in-depth
+
+**Status:** APPROVED
+
+**Approved by:** Person 2 / human decision owner
+
+**Approved at:** 2026-08-29T13:37-05:00
+
+**Context:** caller speech, transcripts, model output, and tool arguments are untrusted.
+Volta needs a root of trust that prevents an incorrect or prompt-injected model from
+authorizing a consequential action outside the current server-side mandate.
+
+**Alternatives considered:**
+
+- **A — Prompt-only enforcement.** Fastest to demo, but the model remains the
+  authorization boundary. A persuasive caller or model error can turn a behavioral
+  failure into an unauthorized action. This is weakest under Trial-by-Fire.
+- **B — Prompt plus probabilistic guardrail/model validator.** Adds useful attack
+  detection and behavioral defense, but the final safety decision still depends on
+  probabilistic inference. It also adds latency, cost, and another failure mode without
+  making the price cap a deterministic invariant.
+- **C — Deterministic reference monitor plus defense-in-depth.** The model emits a typed
+  proposal; strict server-side validation and plain Python policy evaluate it against the
+  authoritative current mandate and state before any consequential mutation. Prompts,
+  classifiers, and tool guardrails remain auxiliary defenses, never the root of trust.
+
+**Decided:** Alternative C. Authorization lives in `backend/app/policy/` and every
+consequential mutation must be completely mediated by deterministic policy. The LLM is
+an untrusted proposer, not an authorization authority.
+
+**Why:** C makes hard mandate limits explainable and deterministically testable even if
+conversation behavior is manipulated. It is the strongest Trial-by-Fire design and is
+consistent with the project's existing trust-layer architecture.
+
+**Trade-off accepted:** the first build hours go to schemas, policy tests, state
+contracts, and mediation instead of conversational polish. This is accepted to prevent
+unauthorized commitments and reduce late integration ambiguity.
+
+**Implementation contract:**
+
+- Caller/model content cannot mutate the authoritative mandate.
+- The model receives proposal/read/escalation capabilities only; no direct commitment,
+  award, mandate-mutation, arbitrary database, HTTP, or shell capability.
+- Every consequential state mutation revalidates the exact proposal against the current
+  authoritative mandate and state, and fails closed on malformed, stale, unavailable, or
+  ambiguous inputs.
+- Import layering alone is insufficient: mutation endpoints require negative bypass
+  tests proving complete mediation.
+- Guardrails and injection classifiers may improve behavior or telemetry but cannot
+  return authoritative permission.
+
+**Verification:** NOT RUN. Required evidence will include price-cap boundary tests,
+prompt-injection metamorphic tests, stale-state tests, route/tool bypass tests, and an
+integrated live-call attempt that produces zero unauthorized side effects.
+
+**Would change if:** never to prompt-only or probabilistic authorization. The internal
+deployment shape may be simplified if the same deterministic complete-mediation
+property and tests are preserved.
+
+## D7 / Person 2 D-02B — USD policy currency with controlled hybrid FX conversion
+
+**Status:** APPROVED
+
+**Approved by:** Person 2 / human decision owner
+
+**Approved at:** 2026-08-29T13:52-05:00
+
+**Context:** users configure mandates and caps in one authoritative currency, while
+carriers may quote in other currencies. Conversion must be deterministic, reproducible,
+and independent of caller or model claims. "Real-time conversion" means conversion at
+policy-evaluation time using a timestamped rate snapshot; it does not imply that a daily
+reference rate is a continuously tradable market price.
+
+**Alternatives considered:**
+
+- **A — Official daily reference rates only.** Highly auditable and authoritative for
+  covered pairs, but no single official source covers every ISO 4217 currency. Business
+  days, publication delays, and narrow coverage can force avoidable escalations.
+- **B — One commercial near-real-time provider only.** Broad coverage and a simple API,
+  but creates a single vendor, availability, rate-limit, and data-quality dependency.
+  A quoted provider rate may also differ from the eventual executable bank rate.
+- **C — Controlled hybrid.** Use one explicitly approved broad-coverage primary provider,
+  official reference adapters where relevant, and immutable cached rate snapshots under
+  an approved freshness policy. Never silently switch providers; fail closed if no
+  approved usable rate exists.
+
+**Decided:** Alternative C. `USD` is Volta's sole internal mandate, budget, comparison,
+ranking, and policy-decision currency. A carrier may quote any explicitly identified,
+supported ISO 4217 currency. Country, locale, or a currency symbol never determines the
+currency implicitly.
+
+**Why:** C preserves broad Trial-by-Fire coverage without allowing the model to invent
+rates, while retaining official benchmarks and reproducible authorization evidence. It
+also keeps all user-defined authority comparable in one currency.
+
+**Trade-off accepted:** the FX boundary adds a provider adapter, caching, freshness and
+rounding rules, audit fields, outage behavior, and tests. Foreign quotes may escalate
+when approved rate data is unavailable rather than being guessed.
+
+**Implementation contract:**
+
+- Preserve every original amount and ISO 4217 currency; never overwrite it with USD.
+- Convert server-side with `Decimal`, using a normalized `USD per source unit` rate.
+- Store provider, rate identifier when available, observed/fetched/expiry timestamps,
+  conversion timestamp, direction, unrounded result, rounding rule, and policy amount.
+- Round the USD authorization amount upward to the smallest USD unit; never round down
+  against a cap.
+- Bind the policy decision to the immutable FX snapshot used for that evaluation.
+- Unknown, ambiguous, unsupported, stale, unavailable, or model/caller-supplied rates
+  produce `CLARIFY` or `ESCALATE` with zero consequential side effects.
+- Mixed-currency cost components are converted separately and then summed in USD without
+  double counting.
+- FX provider, freshness/cache limits, divergence checks, and safety-margin policy remain
+  separate decisions and may not be silently selected during implementation.
+
+**Verification:** NOT RUN. Required evidence includes direction/rounding unit tests,
+ISO-code validation, stale/unavailable/provider-divergence tests, immutable-snapshot
+replay, mixed-currency totals, and metamorphic tests proving caller-provided rates cannot
+change authorization.
+
+**Would change if:** USD ceases to be the business authority currency or the approved
+provider cannot meet required coverage/reliability. Any replacement must preserve
+deterministic conversion, immutable evidence, and fail-closed behavior.
+
+## D8 / Person 2 D-02C — Mandatory mandate-configured FX safety margin
+
+**Status:** APPROVED
+
+**Approved by:** Person 2 / human decision owner
+
+**Approved at:** 2026-08-29T13:55-05:00
+
+**Context:** a foreign-currency obligation can be below a USD mandate cap at policy
+evaluation and exceed it later because of market movement or execution spread. Volta
+must define whether and how authorization accounts for that risk.
+
+**Alternatives considered:**
+
+- **A — Evaluation-time FX snapshot only.** Lowest implementation cost, but a later rate
+  move can make the eventual USD-equivalent cost exceed the mandate even though the
+  original authorization was internally correct.
+- **B — Mandatory user-configured FX safety margin.** Each mandate that permits non-USD
+  obligations explicitly defines `fx_safety_margin_bps`. Policy evaluates the converted
+  all-in amount plus that margin. Missing configuration fails closed.
+- **C — Executable rate lock or immediate conversion.** Strongest control over settlement
+  value, but requires treasury/payment or hedging integration outside this hackathon's
+  approved scope.
+
+**Decided:** Alternative B. For every non-USD authorization:
+`policy_usd = converted_all_in_usd × (1 + fx_safety_margin_bps / 10_000)`.
+The margin is human-issued authority stored in the mandate; the caller, model, FX
+provider, and policy implementation cannot invent or change it.
+
+**Why:** B makes currency risk explicit and deterministic without expanding Volta into a
+payment or hedging system. It is safer than pretending an evaluation-time spot/reference
+rate guarantees future settlement value and remains feasible within 24 hours.
+
+**Trade-off accepted:** the margin reduces but cannot guarantee against all future market
+movement. A conservative margin may reject valid offers; an aggressive margin is a human
+risk decision. The concrete basis-point value still requires separate approval.
+
+**Implementation contract:**
+
+- A non-USD proposal with no explicit mandate `fx_safety_margin_bps` cannot return `ALLOW`.
+- The margin is applied after comprehensive all-in conversion and before comparison to
+  the USD cap, using `Decimal` and conservative upward rounding.
+- `fx_safety_margin_bps` is versioned with the mandate; stale proposals fail closed.
+- USD-denominated quotes do not receive an FX margin unless a separate mandate rule says so.
+- The FX snapshot, unbuffered USD result, margin, buffered policy amount, and mandate
+  version are stored as authorization evidence.
+- Changing the margin is a human-authenticated mandate mutation, never a conversational update.
+
+**Verification:** NOT RUN. Required evidence includes missing/zero/positive/extreme margin
+boundaries, upward rounding, stale mandate versions, caller/model margin injection, and
+cap-minus/cap-plus-one-cent tests after applying the margin.
+
+**Would change if:** Volta gains an approved executable rate-lock or immediate-conversion
+boundary that guarantees settlement value. Any replacement must remain explicit,
+auditable, and independent of the LLM.
+
+## D9 / Person 2 D-02A — Comprehensive all-in USD price-cap semantics
+
+**Status:** APPROVED
+
+**Approved by:** Person 2 / human decision owner
+
+**Approved at:** 2026-08-29T13:57-05:00
+
+**Context:** a mandate such as "maximum USD 550" is unsafe if it applies only to an
+advertised base rate while tolls, taxes, terminal handling, equipment, waiting, or other
+customer-payable obligations remain outside the comparison. The cap needs one complete,
+deterministic economic meaning.
+
+**Alternatives considered:**
+
+- **A — Comprehensive all-in cap.** Every customer-payable amount within the mandated
+  port-to-warehouse scope is included before authorization. Unknown or unbounded charges
+  make the total non-final and block authorization.
+- **B — Base transport rate only.** Easiest comparison, but extras can make the actual
+  obligation exceed the mandate and create an obvious Trial-by-Fire bypass.
+- **C — Base rate plus selected accessorial categories.** More flexible than B, but any
+  omitted or newly named category can escape the cap unless the schema and contract are
+  exhaustive and continuously maintained.
+
+**Decided:** Alternative A. The mandate cap applies to the aggregate amount the customer
+may be obligated to pay for the defined port-to-warehouse movement, expressed as the
+final policy amount in USD after required FX conversion and safety margin.
+
+**Why:** A makes the cap match the business's actual economic exposure and prevents fee
+names or invoice decomposition from bypassing authorization. It is the simplest rule to
+explain, test, and defend under an adversarial live negotiation.
+
+**Trade-off accepted:** Volta will clarify or escalate more often when a carrier cannot
+provide a guaranteed total. This conservatism is accepted rather than authorizing an
+obligation whose maximum cannot be proven.
+
+**Implementation contract:**
+
+- Include every customer-payable component in scope: transport/fuel/tolls; port,
+  terminal, gate, handling and inspection; equipment/chassis/container; storage,
+  waiting, detention and demurrage; pickup/destination/unloading/return/additional stops;
+  special cargo, permits, security and insurance; applicable customs/regulatory items;
+  taxes, fees, reimbursements, payment charges; and bounded contingencies.
+- Preserve original itemized amounts, currencies, responsibility, inclusion/exclusion,
+  source, conditions, and validity period. Do not double count embedded components.
+- Convert mixed-currency components separately under D7/D-02B, apply D8/D-02C where
+  required, then sum and round upward to USD cents for the policy comparison.
+- Terms such as "plus expenses", "at cost", "taxes extra", unnamed charges, uncapped
+  waiting, or any unknown customer obligation produce `CLARIFY / TOTAL_NOT_FINAL` or
+  escalation, never `ALLOW`.
+- Discounts reduce the total only when explicit, guaranteed, attributable to the same
+  quote, and preserved as evidence.
+- Liability-dependent incident costs require explicit responsibility; a carrier-caused
+  loss does not silently increase authorized customer cost.
+
+**Verification:** NOT RUN. Required evidence includes every cost category, embedded-cost
+deduplication, mixed currencies, taxes, discounts, bounded/unbounded contingencies,
+unknown-fee metamorphic cases, and one-cent boundaries after FX margin and rounding.
+
+**Would change if:** the human defines a narrower operation scope in a new mandate
+version. Within that scope, the cap remains comprehensive all-in; no implementation or
+caller may silently reinterpret it as a base-rate cap.
+
+## D10 / Person 2 D-02D — Dynamic RT FX-margin recommendation with human acceptance
+
+**Status:** APPROVED
+
+**Approved by:** Person 2 / human decision owner
+
+**Approved at:** 2026-08-29T14:11-05:00
+
+**Context:** D8/D-02C requires an explicit FX safety margin for non-USD authorization.
+A universal fixed percentage does not reflect the currency pair, intended settlement
+horizon, recent volatility, market closure, or an individual customer's risk tolerance.
+Volta therefore needs a bounded way to recommend—not determine—the margin.
+
+**Alternatives considered:**
+
+- **A — Fixed 1% / 100 bps demo margin.** Simple and permissive, but weakly connected to
+  observed currency risk and potentially insufficient.
+- **B — Fixed 2% / 200 bps demo margin.** Clear and moderate for a fictional example,
+  but still arbitrary across currency pairs and time horizons.
+- **C — Fixed 5% / 500 bps demo margin.** Conservative, but may reject viable offers and
+  still lacks a risk model.
+- **D — Dynamic RT calculator with explicit human acceptance.** A deterministic,
+  versioned calculator recommends a margin from approved market data and customer inputs,
+  explains its method and limitations, and requires the customer to accept or override
+  the recommendation before it becomes mandate authority.
+
+**Decided:** Alternative D. Add an "RT" calculator as the working product name for the
+FX Risk Tolerance recommendation component. It produces an informational recommended
+`fx_safety_margin_bps`; it cannot write the mandate or authorize an action. Only an
+authenticated human's explicit acceptance or override creates the authoritative,
+versioned mandate value used by policy.
+
+**Why:** D treats the margin as a real customer risk choice instead of embedding an
+arbitrary project constant. It provides a useful, explainable baseline while preserving
+the separation between recommendation and authority established by D1/D-01.
+
+**Trade-off accepted:** the calculator adds market-history ingestion, methodology,
+versioning, explanation, testing, and more failure modes. Its formula, source hierarchy,
+lookback, horizon, confidence/risk inputs, minimum data, and bounds remain a separate
+decision and must not be invented during implementation.
+
+**Implementation contract:**
+
+- RT is deterministic code, not an LLM calculation or LLM-as-judge.
+- RT returns a recommendation, inputs, source snapshots, methodology/calculator version,
+  assumptions, limitations, and sensitivity; it has no mandate-write capability.
+- The model may explain a structured RT result but cannot change its inputs, output,
+  limitations, or acceptance state.
+- The UI must show recommended bps and buffered USD effect before the human accepts or
+  overrides it. Silence, model assent, or a preselected control is not acceptance.
+- Human acceptance/override is authenticated, timestamped, attributed, versioned, and
+  stored in the mandate. Policy consumes only that accepted value, never a recommendation.
+- Insufficient, stale, unsupported, or unavailable data yields no recommendation and
+  cannot silently fall back to a fixed margin.
+- The explanation states that RT is an estimate based on historical/observed data, cannot
+  predict or guarantee future rates or actual execution spread, and may under- or
+  overestimate exposure. The customer must evaluate or explicitly accept the estimate.
+- Product wording must not claim that a disclaimer automatically transfers or eliminates
+  legal responsibility; legal effect depends on applicable terms and law.
+
+**Verification:** NOT RUN. Required evidence includes deterministic replay from fixed
+rate history, stale/insufficient data, extreme volatility, market gaps, unsupported pairs,
+human accept/override flows, no default/preselected acceptance, mandate version changes,
+and proof that recommendation output alone cannot authorize a proposal.
+
+**Would change if:** RT cannot be made understandable and reproducible within the
+hackathon schedule. In that case reduce scope to manual human entry; never silently adopt
+a fixed default or let the model choose authority.
+
+## D11 / Person 2 D-02E — Transparent historical simulation for RT
+
+**Status:** APPROVED
+
+**Approved by:** Person 2 / human decision owner
+
+**Approved at:** 2026-08-29T14:14-05:00
+
+**Context:** the approved RT calculator needs a deterministic method for converting FX
+history and a settlement horizon into an explainable margin recommendation. The method
+must not present statistical estimation as a guarantee.
+
+**Alternatives considered:**
+
+- **A — Parametric volatility formula.** Fast and familiar, but requires distributional
+  assumptions and can underrepresent jumps and heavy tails.
+- **B — Historical simulation with a transparent adverse percentile.** Replays observed
+  horizon-matched FX changes, requires no normal-distribution assumption, and exposes the
+  observations and percentile behind the result.
+- **C — Historical Expected Shortfall with stress calibration.** Better describes tail
+  severity beyond a percentile but is more data-sensitive and difficult to explain and
+  validate within the hackathon.
+- **D — GARCH or Monte Carlo.** Potentially more adaptive, but adds model specification,
+  calibration, randomness, and validation risk that can make an estimate appear more
+  authoritative than the evidence warrants.
+
+**Decided:** Alternative B. RT uses historical simulation of adverse changes in
+`USD per source-currency unit` over the customer-relevant settlement horizon and selects
+an approved adverse percentile. Known execution spread and conversion fees are disclosed
+separately rather than hidden inside historical volatility.
+
+**Why:** B is deterministic, reproducible, distribution-agnostic, explainable to a
+non-specialist, and small enough to test rigorously. It provides a credible baseline
+without turning Volta into a trading or bank-capital model.
+
+**Trade-off accepted:** historical observations may omit future shocks, structural breaks,
+currency controls, illiquidity, devaluation, or regime changes. The recommendation can
+underestimate or overestimate future exposure and remains advisory.
+
+**Implementation contract:**
+
+- Normalize source data to one documented direction before returns are calculated.
+- Use ordered, timestamped, deduplicated observations from approved sources; reject
+  missing, non-positive, malformed, or temporally inconsistent rates.
+- Compute overlapping adverse movements matching the accepted settlement horizon.
+- Select the approved adverse percentile deterministically and round the resulting margin
+  upward to basis points.
+- Disclose observation window/count, horizon, percentile, worst observed movement, data
+  source/freshness, missing-data handling, execution spread/fees, and sensitivity at
+  nearby percentiles.
+- Preserve the exact input snapshot or immutable reference and calculator version so the
+  result can be replayed.
+- No result is a guarantee or maximum possible loss; RT must state that history may not
+  represent future market conditions and that losses can exceed the recommendation.
+- No recommendation is produced when minimum data/freshness requirements are unmet.
+- Confidence percentile, observation window, settlement-horizon policy, data source,
+  spread treatment, bounds, and stress behavior remain separate approved parameters.
+
+**Verification:** NOT RUN. Required evidence includes hand-calculated fixtures,
+direction inversion, overlapping horizons, percentile boundary behavior, missing/duplicate
+dates, weekends/holidays, jumps, non-positive rates, deterministic replay, and sensitivity
+disclosure.
+
+**Would change if:** testing shows that the historical estimator is unstable or
+misleading for supported currencies. Any replacement requires a new human-approved
+decision and must preserve advisory status and reproducibility.
+
+## D12 / Person 2 D-02F — Controlled RT historical-simulation baseline
+
+**Status:** APPROVED
+
+**Approved by:** Person 2 / human decision owner
+
+**Approved at:** 2026-08-29T14:16-05:00
+
+**Context:** historical simulation is not reproducible until its minimum observation
+count, horizon, percentile, and sensitivity presentation are fixed. Unlimited statistical
+configuration would also let a user tune the model merely to make an offer fit.
+
+**Alternatives considered:**
+
+- **A — Controlled baseline.** Require at least 250 valid daily observations, an
+  authenticated customer-provided 1–10-business-day settlement horizon, the 99th adverse
+  percentile, and displayed 95th/97.5th/worst-observed sensitivity.
+- **B — Fully customer-configurable statistics.** Flexible, but permits weak or
+  opportunistically chosen windows/percentiles and greatly expands validation and
+  explanation requirements.
+- **C — Named risk presets.** Simpler UI, but labels such as "balanced" or "conservative"
+  can hide assumptions and imply certainty unless every underlying parameter is exposed.
+
+**Decided:** Alternative A. RT uses a minimum of 250 valid daily observations. The
+authenticated customer supplies the expected settlement horizon from 1 through 10
+business days. RT recommends the 99th-percentile adverse horizon-matched movement and
+shows the 95th percentile, 97.5th percentile, and worst observed movement as sensitivity,
+not as alternate automatic decisions.
+
+**Why:** A keeps the estimator deterministic, visible, and small enough to test while
+letting the customer specify the economically meaningful timing input. The customer still
+accepts or overrides the resulting margin under D10/D-02D.
+
+**Trade-off accepted:** 250 observations and a 99th percentile provide limited tail
+samples and do not cover an unseen shock. The 1–10-day range excludes longer exposures;
+those produce no recommendation until a separately approved model exists.
+
+**Implementation contract:**
+
+- Require at least 250 valid, ordered daily rate observations after validation and
+  deduplication; do not fill missing observations by model inference.
+- Settlement horizon is an authenticated human input in integer business days `1..10`.
+- Compute overlapping horizon-matched adverse movements with a documented business-day
+  calendar and deterministic percentile convention.
+- Recommend the 99th adverse percentile, rounded upward to basis points.
+- Display 95th, 97.5th, and worst-observed adverse movements using the same data/horizon.
+- Sensitivity values are explanatory only and never replace the recommendation or the
+  human-accepted mandate value automatically.
+- Fewer than 250 valid observations, horizon outside `1..10`, stale data, or an
+  unsupported calendar/pair yields no RT recommendation and no non-USD authorization.
+- The UI explains sample size, tail sparsity, historical limitation, and that losses can
+  exceed both the percentile estimate and worst movement in the selected sample.
+
+**Verification:** NOT RUN. Required evidence includes exactly 249/250 observations,
+horizons 0/1/10/11, overlapping-window fixtures, percentile interpolation convention,
+round-up boundaries, weekend/holiday handling, sensitivity ordering, and deterministic
+replay.
+
+**Would change if:** empirical testing shows the minimum sample or fixed percentile is
+misleading for supported pairs, or real customer settlement regularly exceeds 10 business
+days. Any change requires a new approved decision and versioned calculator behavior.
+
+## D13 / Person 2 D-02G — Open Exchange Rates primary with official cross-checks
+
+**Status:** APPROVED
+
+**Approved by:** Person 2 / human decision owner
+
+**Approved at:** 2026-08-29T14:19-05:00
+
+**Context:** the controlled-hybrid architecture approved in D7/D-02B requires a named
+primary source for current and historical FX data. The hackathon baseline must support
+USD-native conversion and the 250-observation RT input without pretending that an
+indicative market rate is the customer's guaranteed execution rate.
+
+**Alternatives considered:**
+
+- **A — Open Exchange Rates Free plus official cross-checks.** USD-native hourly data,
+  broad currency coverage, historical daily observations, and a 1,000-request monthly
+  baseline at no subscription cost; weaker service assurance and indicative midpoint
+  limitations must be disclosed.
+- **B — Open Exchange Rates Developer.** Higher 10,000-request allowance and alternate
+  base currencies for USD 12/month, but those features are unnecessary for the approved
+  USD-only policy base at hackathon scale.
+- **C — Official sources only.** Strong provenance and no vendor subscription, but
+  fragmented coverage and formats across central banks create substantial integration
+  work and cannot provide one consistent broad-currency source.
+- **D — Provider-neutral mock data for the demo.** Fast and free, but does not demonstrate
+  real conversion and risks misleading users unless every result is visibly simulated.
+
+**Decided:** Alternative A. Use Open Exchange Rates Free as the primary hackathon source
+for supported current and historical rates, normalized to USD. Cross-check a rate against
+an approved official source such as the ECB or Banxico when that source publishes the
+relevant pair. Persist the source response or immutable content-addressed snapshot and
+the cross-check result used for each policy or RT calculation.
+
+**Why:** A fits the approved USD architecture, supplies the required history and broad
+coverage with the lowest integration and monetary cost, and leaves time for deterministic
+validation. Official cross-checks add independent evidence without making Volta maintain
+a fragile global patchwork of central-bank adapters during the hackathon.
+
+**Trade-off accepted:** the free plan has no paid SLA, is subject to its current quota and
+terms, and publishes indicative blended rates rather than a guaranteed customer execution
+price. Official sources cover only subsets of pairs and may publish on different schedules.
+The zero-dollar subscription assumption must be revalidated before deployment or usage
+beyond the documented free-plan allowance.
+
+**Implementation contract:**
+
+- An allowlisted server-side adapter is the only component permitted to obtain provider
+  data. The LLM, caller, carrier, browser, or tool proposal cannot supply an authoritative
+  policy rate.
+- Keep provider credentials outside source control and client bundles; never log or return
+  them. Authentication failure, quota exhaustion, or provider error fails closed.
+- Accept only explicitly supported ISO 4217 fiat codes and positive finite rates. Do not
+  enable unofficial, black-market, experimental, commodity, or crypto symbols by default.
+- Normalize and document rate direction as `USD per source-currency unit`; validate base,
+  quote, provider timestamp, retrieval timestamp, schema, and calculator/adapter version.
+- Persist an immutable response or content-addressed snapshot, cryptographic digest,
+  provenance, applicable timestamps, normalized rate, and validation outcome so every
+  authorization and RT result can be replayed.
+- Official cross-check sources are separately allowlisted by pair. Preserve both values,
+  timestamps, source identities, and divergence calculation; never silently substitute
+  one source for another.
+- Until freshness windows, cross-check divergence thresholds, cache behavior, and outage
+  rules receive separate human approval, no implementation may invent them or claim a
+  rate is authorization-ready.
+- Label the rate as indicative. Actual execution spread, payment-provider charges, bank
+  fees, taxes, and other comprehensive-all-in components remain separate under D9/D-02A;
+  neither the FX margin nor this source decision may silently erase them.
+- Enforce quota-aware server-side caching without weakening freshness or auditability.
+  A paid-plan transition, fallback provider, or broader production guarantee requires a
+  new recorded decision and cost approval.
+
+**Verification:** NOT RUN. Required evidence includes fixed provider fixtures, schema and
+direction validation, unsupported codes, unofficial-symbol rejection, non-positive and
+non-finite rates, stale/future timestamps, credential redaction, quota/auth/provider
+failures, snapshot replay and tamper detection, cross-check agreement/divergence, source
+schedule mismatch, caching, and proof that caller/model-supplied rates cannot authorize.
+
+**Would change if:** free-plan terms, allowance, coverage, data licensing, availability,
+or validation tests do not support the approved use. Switching plan or provider requires
+a new human-approved decision; it is never an automatic fallback.
+
+## D14 / Person 2 D-02H — Strict FX freshness, divergence, and outage baseline
+
+**Status:** APPROVED
+
+**Approved by:** Person 2 / human decision owner
+
+**Approved at:** 2026-08-29T14:21-05:00
+
+**Context:** naming FX sources is insufficient for authorization unless policy defines
+how recent the primary observation must be, how independent disagreement is handled, and
+whether cached data remains usable during an outage. These rules must be deterministic
+and must fit the selected free-plan request allowance.
+
+**Alternatives considered:**
+
+- **A — Strict controlled baseline.** Require a primary provider timestamp no older than
+  two hours, fetch/cache approximately hourly, reuse cached data only inside that same
+  window, and block covered pairs when an official cross-check differs by more than 1%.
+- **B — Daily baseline.** Permit primary observations for 24 hours and up to 2%
+  divergence, improving availability but weakening the requested near-real-time behavior.
+- **C — Pair-specific thresholds.** Calibrate freshness and divergence per currency,
+  improving market sensitivity but adding substantial evidence, configuration, and test
+  requirements not yet available.
+- **D — Advisory divergence only.** Show disagreement but permit authorization, improving
+  demo continuity while allowing questionable data to affect a consequential USD limit.
+
+**Decided:** Alternative A. A primary Open Exchange Rates observation is usable only when
+its provider timestamp is at most two hours old at policy evaluation. Server-side caching
+and approximately hourly shared retrieval preserve free-plan quota. During provider
+failure, the last validated immutable snapshot may be reused only while its provider
+timestamp remains within the same two-hour window. For a pair covered by an allowlisted
+official cross-check, normalized divergence greater than 1% blocks authorization. Where
+no approved official source publishes the pair, a valid primary observation may be used
+but the evidence and user-facing result must explicitly state `not independently
+cross-checked`.
+
+**Why:** A turns provider freshness and disagreement into deterministic authorization
+inputs. It favors a clear safe failure during Trial-by-Fire over silently converting a
+customer commitment with stale or materially inconsistent data, while remaining feasible
+within the documented free-plan quota when requests are shared and cached server-side.
+
+**Trade-off accepted:** a two-hour limit and 1% threshold can block a legitimate offer
+during provider delays, official publication differences, weekends/holidays, or unusual
+markets. Pairs without official coverage receive less independent assurance and must not
+be represented as cross-checked. This baseline is not pair-calibrated.
+
+**Implementation contract:**
+
+- Compute primary age from trusted server time and the authenticated provider timestamp,
+  not browser, caller, carrier, or model time. Future timestamps and negative ages fail.
+- `age <= 2 hours` is valid; `age > 2 hours` is stale. Retrieval time does not reset the
+  provider observation age.
+- Use a process-independent server-side cache/shared store so callers cannot multiply
+  upstream requests. Target approximately one successful primary refresh per hour and
+  retain quota headroom for controlled recovery and tests.
+- Provider error, authentication failure, quota exhaustion, malformed response, or cache
+  failure never extends validity. A previously validated immutable snapshot is usable
+  only until its original provider timestamp crosses the two-hour boundary.
+- For a covered pair, select the most recent publication expected under the allowlisted
+  official source's documented business-day, weekend, and holiday schedule. Missing or
+  stale publication beyond that expected schedule blocks; never forward-fill silently.
+- Normalize both observations to `USD per source-currency unit` and calculate divergence
+  deterministically as `abs(primary - official) / official * 100`. Divergence `<= 1%` is
+  valid; divergence `> 1%`, a zero/non-finite denominator, or incomparable as-of evidence
+  blocks authorization.
+- Preserve raw/immutable source evidence, normalized values, timestamps, age, official
+  coverage status, expected-publication determination, divergence, threshold, adapter
+  versions, and final reason code.
+- No official coverage is not equivalent to cross-check success. Record and display
+  `not independently cross-checked`; this exception applies only when the allowlisted
+  coverage registry confirms that the pair is not published.
+- FX denial must return a structured safe reason and must not reveal credentials, raw
+  internal errors, or sensitive configuration. The LLM may explain the result but cannot
+  override freshness, divergence, coverage, or outage outcomes.
+
+**Verification:** NOT RUN. Required evidence includes ages immediately below/at/above two
+hours, future timestamps, trusted-clock behavior, hourly cache concurrency, quota errors,
+outage reuse before/at/after expiry, official weekends/holidays and missed publication,
+rate-direction normalization, divergence immediately below/at/above 1%, invalid official
+denominators, incomparable as-of dates, uncovered pairs, immutable replay, and proof that
+the model/caller cannot alter any threshold or outcome.
+
+**Would change if:** provider behavior, official-source publication timing, quota tests,
+or observed false blocks show that the baseline is unsuitable. Any wider window, higher
+threshold, pair-specific rule, or automatic fallback requires a new human approval and
+must not be introduced merely to make a failing demonstration pass.
+
+## D15 / Person 2 D-02I — Most recent 250 valid observations for RT
+
+**Status:** APPROVED
+
+**Approved by:** Person 2 / human decision owner
+
+**Approved at:** 2026-08-29T14:24-05:00
+
+**Context:** D12/D-02F set 250 valid daily observations as the minimum but did not define
+the actual rolling lookback. The selected free provider plan permits 1,000 requests per
+month; a first-month backfill must coexist with approximately hourly current-rate refresh.
+
+**Alternatives considered:**
+
+- **A — Most recent 250 valid daily observations, with mandatory disclosure.** Fits the
+  initial free-plan request budget and emphasizes the current market regime, but supplies
+  only a small number of observations in the 99th-percentile tail.
+- **B — Most recent 500 observations.** Improves tail evidence and regime coverage, but
+  initial backfill plus hourly refresh exceeds the documented free monthly allowance.
+- **C — Five-year rolling history.** Covers more regimes but requires paid/bulk access or
+  staged ingestion and may mix obsolete currency conditions.
+- **D — Customer-selected lookback.** Flexible, but permits opportunistic tuning and
+  materially expands validation, explanation, and mandate-governance requirements.
+
+**Decided:** Alternative A with the disclosure. RT calculations use exactly the most
+recent 250 valid daily observations available under the approved validation and freshness
+rules. The structured result and UI must prominently disclose the limited sample, sparse
+99th-percentile tail evidence, inability to represent unseen crises, and possibility that
+future loss exceeds the recommendation and worst observation in the window.
+
+**Why:** A is deterministic, recent, explainable, feasible within the free-plan budget,
+and prevents the lookback from being tuned to obtain a desired margin. Making the warning
+part of the structured result prevents an LLM or presentation layer from omitting the
+central limitation.
+
+**Trade-off accepted:** approximately one year of valid business-day observations can
+miss older crises, devaluations, capital controls, structural breaks, and infrequent tail
+events. The 99th percentile is based on very few extreme samples, especially after
+horizon matching, and must not be characterized as statistically certain.
+
+**Implementation contract:**
+
+- After source validation, ordering, and deduplication, select exactly the newest 250
+  valid daily observations by canonical observation date; never let a caller or model
+  choose or truncate the lookback.
+- Fewer than 250 valid observations yields no recommendation. More than 250 are retained
+  as auditable source history if available but are excluded from this calculator version.
+- Record the first and last included dates, valid count, rejected/missing dates and reason
+  codes, selection rule, provider snapshots/digests, and calculator version.
+- Quota planning is operational evidence, not permission to weaken validation. Backfill
+  requests and shared hourly refreshes must be metered; quota exhaustion fails closed.
+- The deterministic structured result includes a non-empty limitation code and canonical
+  disclosure stating that 250 recent observations provide sparse tail evidence, exclude
+  older regimes, cannot predict crises, and do not cap possible loss.
+- The UI presents that disclosure adjacent to the recommendation before acceptance or
+  override. It may not be hidden behind optional expansion, reduced to a generic legal
+  disclaimer, or replaced by model-generated wording.
+- Logs/audit evidence record which disclosure version was shown and accepted alongside
+  the recommendation. Acceptance acknowledges visibility; it does not turn the estimate
+  into a guarantee or eliminate Volta's obligations.
+- Historical observations are not refetched merely to change a recorded result. Each
+  completed recommendation remains replayable against its immutable evidence.
+
+**Verification:** NOT RUN. Required evidence includes 249/250/251 valid observations,
+newest-window selection, unsorted and duplicate dates, invalid observations inside and
+outside the candidate range, deterministic rollover when a new day arrives, quota
+exhaustion, stable historical replay, required disclosure presence/placement/version,
+and proof that the model/caller cannot suppress the disclosure or select the lookback.
+
+**Would change if:** the project adopts approved paid/bulk data access or empirical
+validation demonstrates that 250 observations create unacceptable instability. A longer,
+weighted, or regime-aware window requires a new human-approved calculator version.
+
+## D16 / Person 2 D-02J — Conservative nearest-rank RT percentile
+
+**Status:** APPROVED
+
+**Approved by:** Person 2 / human decision owner
+
+**Approved at:** 2026-08-29T14:26-05:00
+
+**Context:** statistical libraries implement percentile labels with incompatible rank and
+interpolation conventions. RT needs one language-independent oracle for the approved 99th
+percentile and sensitivity values, including explicit handling of favorable-only samples
+and fractional basis points.
+
+**Alternatives considered:**
+
+- **A — Conservative nearest-rank.** Sort the horizon-matched USD cost changes, select
+  rank `ceil(p * n)` without interpolation, floor the recommendation at zero, and round
+  a positive fractional basis-point result upward.
+- **B — Linear interpolation.** Produces smoother results but depends on a precisely named
+  convention and may recommend a value that was never observed.
+- **C — Average surrounding observations.** Easy to describe, but can reduce the result
+  below the nearest observed adverse movement.
+- **D — Customer-selected method.** Flexible, but enables method-shopping and makes the
+  authorization input inconsistent across otherwise identical mandates.
+
+**Decided:** Alternative A. RT uses the one-indexed nearest-rank quantile: for sorted
+signed horizon changes `x[1..n]`, `Q(p) = x[ceil(p*n)]`. No interpolation is allowed.
+The recommended margin is `ceil(max(0, Q(0.99)) * 10,000)` basis points. The displayed
+95th and 97.5th sensitivities use the same quantile rule and unit conversion; the worst
+observed sensitivity is the maximum signed horizon change, floored at zero for a margin.
+
+**Why:** A creates a small deterministic oracle that can be reproduced by hand and
+implemented identically across languages without relying on a library's unnamed default.
+Upward conversion avoids understating a positive fractional basis-point exposure.
+
+**Trade-off accepted:** nearest-rank outputs change in steps and can be more conservative
+than an interpolated estimate. A zero floor discards favorable movement as a negative
+margin but does not claim that zero observed adverse movement means zero future risk.
+
+**Implementation contract:**
+
+- Calculate signed changes in unrounded high-precision decimal arithmetic using the
+  separately approved normalized `USD per source-currency unit` series.
+- Sort ascending using numeric value. For percentile `p`, use one-indexed rank
+  `ceil(p*n)` and select that exact observation; reject empty samples.
+- Apply the zero floor only after selecting the signed quantile. Never discard favorable
+  observations before ranking, because doing so changes the empirical distribution.
+- Convert a non-negative fractional result to basis points by multiplying by 10,000 and
+  applying mathematical ceiling. Do not use binary floating-point or banker's rounding.
+- Apply the same rule to 95%, 97.5%, and 99%; display the maximum observed signed adverse
+  movement separately. Preserve raw selected values, ranks, sample count, sorted-data
+  digest, decimal precision/version, and final basis-point values.
+- Canonical boundary semantics are part of the calculator version. Libraries may assist
+  with sorting/decimal arithmetic but their percentile helpers are not authoritative.
+- A zero recommendation retains every D10/D12/D15 disclosure, requires explicit human
+  acceptance or override, and is not evidence that future loss is impossible.
+- The LLM, UI, and caller cannot select interpolation, rounding, rank, floor, or precision.
+
+**Verification:** NOT RUN. Required evidence includes hand-calculated odd/even fixtures,
+single-element and empty samples, ranks at 95/97.5/99%, duplicate/tied values, all-negative,
+zero, mixed, and all-positive changes, fractional basis points immediately below/at/above
+an integer, decimal precision, cross-language parity, and proof that favorable values are
+ranked before the zero floor is applied.
+
+**Would change if:** independent numerical review shows that the method systematically
+misstates the approved risk interpretation. Any interpolation, Expected Shortfall, or
+rounding change requires a new versioned human decision and replay-impact analysis.
+
+## D17 / Person 2 D-02K — Joint-currency banking calendar for RT horizons
+
+**Status:** APPROVED
+
+**Approved by:** Person 2 / human decision owner
+
+**Approved at:** 2026-08-29T14:28-05:00
+
+**Context:** the approved customer settlement horizon is expressed in business days, but
+weekdays are not necessarily banking days. USD and the quotation currency may observe
+different holidays or closures, changing the actual interval over which USD cost is at
+risk and therefore changing the historical movements used by RT.
+
+**Alternatives considered:**
+
+- **A — Joint currency banking calendar.** Count a day only when the relevant banking
+  systems for both USD and the quotation currency are open; unsupported calendars fail
+  closed. Most realistic, with additional calendar sourcing and test obligations.
+- **B — Monday through Friday in UTC.** Simple and inexpensive but ignores national
+  holidays and can understate or overstate the actual settlement interval.
+- **C — Calendar days.** Easiest to implement but contradicts the approved business-day
+  input and misrepresents operational settlement timing.
+- **D — Customer-supplied calendar.** Flexible but permits unvalidated or manipulated
+  closure rules to alter an authorization-relevant recommendation.
+
+**Decided:** Alternative A. For a quote in source currency `C`, an RT business day is a
+date on which both the approved USD banking calendar and the approved `C` banking calendar
+are open. Horizon matching advances across joint-open dates only. If either calendar,
+version, coverage period, or required closure status is unavailable, RT produces no
+recommendation and the non-USD proposal cannot be authorized.
+
+**Why:** A aligns the model horizon with when settlement can realistically progress and
+prevents a holiday mismatch from shortening the measured exposure. It also creates a
+clear Trial-by-Fire explanation and deterministic failure for unsupported currencies.
+
+**Trade-off accepted:** authoritative holiday and exceptional-closure data add sourcing,
+licensing, versioning, update, and testing work. The supported currency set will be smaller
+until calendars are explicitly configured, and unexpected closures can still require an
+approved update.
+
+**Implementation contract:**
+
+- Maintain a server-side allowlisted registry mapping each supported ISO 4217 fiat code
+  to an approved banking-calendar identifier, source, timezone, coverage interval, and
+  immutable version/digest. Currency-to-country inference by the LLM or caller is forbidden.
+- A joint business date is open only when both USD and source-currency calendars explicitly
+  mark it open. Weekends, holidays, and exceptional closures from either side are excluded.
+- Unknown, ambiguous, missing, expired, conflicting, or out-of-coverage calendar state is
+  not treated as open and yields no RT recommendation; do not silently fall back to weekdays.
+- Starting from each historical observation date, advance to the observation associated
+  with the `h`th subsequent joint-open date for horizon `h`. The exact observation-date
+  alignment and missing-rate rule remain subject to a separate approval.
+- Preserve calendar identifiers, source/version/digest, timezones, evaluated dates,
+  exclusion reasons, joint-open sequence, and horizon endpoints with each RT result.
+- The authenticated customer selects only the integer horizon `1..10`; the customer,
+  carrier, caller, browser, and LLM cannot supply, modify, or override calendar contents.
+- UI and structured results identify the two calendars and actual start/end dates used.
+  Unsupported calendar coverage is explained as a safe refusal, not converted silently.
+- Calendar updates are versioned and affect only new calculations. Historical results
+  remain replayable against the exact calendar evidence originally used.
+
+**Verification:** NOT RUN. Required evidence includes USD-only identity, mismatched US and
+foreign holidays, weekends, consecutive closures, leap days, exceptional closures,
+timezone/date-boundary cases, unknown currencies, missing/conflicting/out-of-coverage
+calendars, horizons 1 and 10, immutable replay across a calendar update, and proof that
+caller/model-supplied closure dates cannot affect the result.
+
+**Would change if:** reliable calendar evidence cannot be obtained for the intended demo
+pairs or settlement operations use a different formally documented convention. Any
+weekday fallback, single-market calendar, or expanded coverage requires human approval.
+
+## D18 / Person 2 D-02L — Official, versioned USD/COP calendar scope
+
+**Status:** APPROVED
+
+**Approved by:** Person 2 / human decision owner
+
+**Approved at:** 2026-08-29T14:33-05:00
+
+**Context:** the joint-calendar rule in D17/D-02K requires an initial supported-currency
+scope and evidence source. Broad calendar coverage would add vendors or unverified holiday
+assumptions before the hackathon's USD/COP path is proven.
+
+**Alternatives considered:**
+
+- **A — Official, versioned USD/COP calendars only.** Use Federal Reserve banking-holiday
+  evidence for USD and an approved Colombian official/statutory banking-calendar source
+  for COP; all other non-USD currencies fail closed. No subscription cost.
+- **B — Commercial global calendar API.** Broad coverage but adds cost, credentials,
+  licensing, provider availability, and validation work.
+- **C — Open-source holiday library.** Quick and broad, but country holidays are not
+  necessarily banking or settlement holidays and package data is not authoritative.
+- **D — Manually entered calendars for arbitrary currencies.** Flexible but difficult to
+  verify consistently and prone to omissions or unreviewed changes.
+
+**Decided:** Alternative A. The initial RT calendar registry is limited to USD and COP.
+USD evidence comes from the Federal Reserve's official K.8 holiday schedule and applicable
+Federal Reserve banking-service rules. COP requires a separately identified and reviewed
+Colombian official or statutory banking-calendar source. Until that evidence is approved
+and versioned, COP is configured as unsupported and calculations fail closed. Every other
+non-USD currency remains outside initial calendar coverage.
+
+**Why:** A bounds the evidence and test surface, avoids another paid dependency, and makes
+the initial demonstration honest about its supported route. It preserves official
+provenance instead of equating a generic public-holiday list with settlement availability.
+
+**Trade-off accepted:** Volta initially supports only one foreign currency and may still
+block USD/COP until the Colombian source passes review. Broad international quotations
+can be received and preserved, but cannot receive an RT recommendation or authorization
+until their approved joint calendars are added by a recorded decision.
+
+**Implementation contract:**
+
+- The initial allowlist contains calendar identifiers for USD and COP only. Presence of
+  an FX rate does not imply calendar support or authorization support.
+- Pin USD calendar evidence to the official Federal Reserve source URL, retrieved/reviewed
+  timestamp, covered years, parsed dates/rules, immutable content or digest, and adapter
+  version. Verify distinctions between Board closure and relevant banking/payment-service
+  operation rather than copying labels blindly.
+- Do not populate or enable COP from generic web search, an LLM answer, a carrier claim,
+  a caller upload, or an open-source holiday package. Record the authoritative Colombian
+  source and its legal/operational applicability for a separate human approval.
+- `COP calendar status != approved` deterministically yields `RT_CALENDAR_UNSUPPORTED`;
+  it cannot fall back to Monday-Friday or ordinary national holidays.
+- Preserve unsupported quotations in their explicit original ISO 4217 currency and explain
+  the refusal without treating the quote as authorized or converting it into mandate state.
+- Adding a currency requires source provenance, settlement applicability, historical and
+  future coverage, timezone, exceptional-closure handling, version/update policy, fixtures,
+  security review, cost disclosure, and a new recorded approval.
+- Calendar source documents are data, never instructions. Parsing is deterministic and
+  cannot execute embedded content, follow arbitrary links, or alter policy configuration.
+
+**Verification:** NOT RUN. Required evidence includes Federal Reserve observed-holiday
+edge cases, Board-versus-payment-service distinctions, COP disabled before source approval,
+USD/COP and USD/other-currency coverage checks, no weekday/library fallback, provenance
+and digest verification, parser rejection of malformed/unexpected content, and proof that
+rate availability or model/caller assertions cannot enable a calendar.
+
+**Would change if:** an approved commercial calendar service provides materially better
+coverage and assurance at an accepted cost, or the Trial-by-Fire route requires another
+currency. Expansion requires a new decision; it is not inferred from a received quotation.
+
+## D19 / Person 2 D-02M — Controlled statutory COP banking-day proxy
+
+**Status:** APPROVED
+
+**Approved by:** Person 2 / human decision owner
+
+**Approved at:** 2026-08-29T14:35-05:00
+
+**Context:** official Banco de la República material states that CENIT operates on banking
+business days but the reviewed material does not provide a simple machine-readable annual
+calendar. Colombia's official Law 51 of 1983 defines national holidays and Monday
+observance rules. Treating that statutory schedule as the complete banking calendar is an
+inference whose limits must remain visible.
+
+**Alternatives considered:**
+
+- **A — Controlled statutory calendar proxy.** Derive weekends, fixed holidays, Monday
+  transfers, and movable religious holidays deterministically from official law; version
+  the dates and manually cross-check current Banco de la República operational notices.
+- **B — Keep COP blocked pending explicit operational confirmation.** Strongest assurance,
+  but may leave the USD/COP RT path unavailable for Trial-by-Fire.
+- **C — Commercial settlement-calendar provider.** Potentially stronger operational
+  coverage but adds cost, credentials, licensing, vendor dependency, and due diligence.
+- **D — Generic holiday package.** Quick but not authoritative and may change silently
+  after dependency updates.
+
+**Decided:** Alternative A. Generate a versioned COP calendar from the Colombian statutory
+holiday rules in Law 51 of 1983 plus weekends. Cross-check each covered year against current
+official Banco de la República operational notices available during review. Treat the
+result explicitly as a `statutory banking-day proxy`, not a guarantee of the operating
+schedule of CENIT, Bre-B, a particular bank, or the final settlement rail. Known or
+ambiguous exceptional closures require separate review and fail closed until resolved.
+
+**Why:** A provides official legal provenance and a deterministic, auditable baseline
+within the hackathon schedule while honestly retaining the distinction between statutory
+holidays and actual payment-system operations.
+
+**Trade-off accepted:** the proxy may omit exceptional closures, institution-specific
+hours, payment-rail differences, emergency measures, or future legal amendments. Manual
+cross-checking is operational work and cannot guarantee completeness. Volta must not
+market the proxy as certified settlement availability.
+
+**Implementation contract:**
+
+- Pin the official SUIN-Juriscol Law 51 source and reviewed legal status, retrieval/review
+  timestamp, source digest or immutable capture, parser/generator version, and covered years.
+- Generate Saturdays and Sundays as closed. Encode each statutory fixed holiday, Monday
+  transfer rule, and movable religious holiday using named deterministic algorithms and
+  high-coverage test fixtures; do not depend on an unpinned holiday library at runtime.
+- Produce a human-reviewable annual table before enabling a year. A reviewer records the
+  official Banco de la República notices checked, discrepancies, resolution, approver,
+  and calendar digest. Unreviewed years are unsupported.
+- Calendar evidence carries the explicit assurance label `statutory banking-day proxy`.
+  UI and structured RT output state that actual bank/payment-rail availability can differ.
+- A detected official exceptional closure, legal amendment, contradictory notice, or
+  unresolved ambiguity marks affected dates/coverage unsupported and blocks calculation;
+  it is never patched from model output or silently treated as open.
+- The customer, carrier, caller, browser, and LLM cannot add/remove holidays or approve a
+  generated year. Manual review is an authenticated administrative action with audit history.
+- Historical results retain the exact annual table and digest used. A corrected calendar
+  versions new calculations and triggers replay-impact analysis without rewriting evidence.
+- This decision approves the evidence method, not a generated date table. No COP calendar
+  becomes enabled until its concrete covered-year table and review evidence exist and pass
+  the required tests.
+
+**Verification:** NOT RUN. Required evidence includes all fixed and Monday-transferred
+holidays, Easter-derived holidays across representative/leap years, Saturday/Sunday rules,
+year boundaries, timezone handling, law-source digest/version, unreviewed years, official
+notice discrepancies and exceptional closures, immutable replay after correction, visible
+proxy disclosure, and proof that external/model input cannot alter or approve dates.
+
+**Would change if:** Banco de la República supplies an authoritative operational calendar
+or an approved vendor provides stronger assurance at accepted cost. Replacing the proxy
+requires provenance review, compatibility tests, replay-impact analysis, and human approval.
+
+## D20 / Person 2 D-02N — Complete exact-date FX history for RT
+
+**Status:** APPROVED
+
+**Approved by:** Person 2 / human decision owner
+
+**Approved at:** 2026-08-29T14:38-05:00
+
+**Context:** a joint calendar may identify an open banking date for which the FX provider
+does not supply a valid observation. Skipping or inventing that date changes the actual
+settlement horizon and can alter the recommended authorization margin.
+
+**Alternatives considered:**
+
+- **A — Complete exact-date sequence.** Require a valid provider observation on every one
+  of the newest 250 consecutive joint-open dates and pair each start with the exact `h`th
+  subsequent joint-open date; any gap produces no recommendation.
+- **B — Skip missing dates.** Improves availability but silently stretches the economic
+  horizon while continuing to label it as the customer-selected number of business days.
+- **C — Carry the previous rate forward.** Common in some reports but falsely converts
+  unavailable evidence into an observed unchanged market rate.
+- **D — Interpolate missing rates.** Creates a smooth series by inventing
+  authorization-relevant observations that the source never published.
+
+**Decided:** Alternative A. RT requires the newest complete sequence of 250 consecutive
+joint-open dates, with one valid source observation assigned to every date. A horizon
+movement beginning at index `i` ends at the exact observation for index `i+h`. Missing,
+ambiguous, duplicate, or invalid evidence for any required date yields no recommendation;
+RT never skips, carries forward, interpolates, or asks an LLM to repair a value.
+
+**Why:** A preserves the approved business-day semantics and gives each calculated
+movement an exact auditable pair of market observations. A safe refusal is preferable to
+quietly changing the horizon or manufacturing data.
+
+**Trade-off accepted:** one data gap blocks the calculator even if surrounding rates are
+available. Obtaining a complete sequence may require an older window, provider support,
+or investigation, and can reduce Trial-by-Fire availability.
+
+**Implementation contract:**
+
+- Construct the ordered joint-open date sequence from the exact approved calendar
+  versions first; then require exactly one valid normalized provider observation for every
+  selected date. Provider timestamps must map under a separately documented canonical
+  observation-date rule.
+- Select the newest run of 250 consecutive joint-open dates for which the run itself is
+  complete. Do not bridge a missing date by treating later dates as consecutive. If no
+  complete qualifying run exists within approved source/calendar coverage, return no result.
+- For horizon `h`, calculate movements only for index pairs `(i, i+h)`, yielding exactly
+  `250-h` horizon-matched movements. Off-by-one alternatives are invalid.
+- Duplicate observations, conflicting observations for one canonical date, invalid rate
+  direction, non-positive/non-finite values, missing snapshots, or digest failure make
+  that date invalid. Do not choose the most favorable duplicate.
+- Preserve all 250 canonical dates and source evidence, gap scan, selected endpoints,
+  horizon, expected movement count, rejected candidate runs, reason codes, and versions.
+- Return a structured `RT_HISTORY_INCOMPLETE` refusal without leaking provider credentials
+  or internal errors. The UI explains the missing date/evidence class and that no estimate
+  was produced; the model cannot soften the refusal into an authorization.
+- Source correction or backfill creates new immutable evidence and a new calculation. It
+  never rewrites a previously refused or completed audit record.
+
+**Verification:** NOT RUN. Required evidence includes one missing date at the start,
+middle, and end; a valid older complete run; duplicates and conflicts; malformed/non-positive
+rates; horizons 1 and 10 producing 249 and 240 movements; exact endpoint/off-by-one fixtures;
+weekend and mismatched-holiday boundaries; no fill/interpolation; immutable backfill; and
+proof that caller/model data cannot complete a run.
+
+**Would change if:** an approved authoritative source explicitly defines a different
+observation or holiday treatment suitable for settlement risk. Any imputation, gap
+tolerance, or alternate-source splice requires a new human decision and validation.
+
+## D21 / Person 2 D-02O — No financial floor or cap on RT recommendation
+
+**Status:** APPROVED
+
+**Approved by:** Person 2 / human decision owner
+
+**Approved at:** 2026-08-29T14:40-05:00
+
+**Context:** the approved historical calculation may produce a zero or unusually large
+margin. Automatically replacing those results with product-selected bounds would introduce
+an unevidenced financial judgment and could conceal the model's actual output.
+
+**Alternatives considered:**
+
+- **A — No policy floor or cap.** Report the exact approved calculation, subject only to
+  the already approved zero floor; disclose sensitivities and require explicit human
+  acceptance or override.
+- **B — Fixed minimum margin.** Guards against a calm sample but any selected percentage
+  would be arbitrary without additional evidence.
+- **C — Maximum recommendation cap.** Improves apparent usability but can materially
+  understate observed currency risk.
+- **D — Fixed minimum and maximum.** Predictable presentation but contradicts the dynamic
+  method and hides its true result.
+
+**Decided:** Alternative A. RT applies no financial-policy minimum above zero and no
+financial-policy maximum. It returns the exact basis-point result from D16/D-02J alongside
+the approved sensitivities and disclosures. A zero or large recommendation remains visible
+and requires the same explicit authenticated human acceptance or override as any other
+result. Technical validation rejects unsafe numeric representations rather than clipping
+them and must not be described as a financial bound.
+
+**Why:** A preserves model transparency and avoids smuggling an arbitrary risk appetite
+into advisory code. The human mandate owner, not RT or an LLM, remains responsible for the
+accepted margin under D10/D-02D.
+
+**Trade-off accepted:** the calculator may produce commercially uncomfortable values or
+zero after an unusually calm sample. Users may choose a lower override despite displayed
+risk. Volta must preserve and explain that choice rather than imply the recommendation
+guarantees sufficiency.
+
+**Implementation contract:**
+
+- Return the exact non-negative integer basis-point recommendation calculated under D16;
+  do not clamp, smooth, substitute, or suppress a zero or large valid result.
+- Display the raw selected quantile, recommended bps, resulting buffered USD amount,
+  95th/97.5th/worst sensitivities, and all D10/D12/D15/D19 limitations before acceptance.
+- A zero recommendation receives an explicit message that the selected historical window
+  showed no positive movement at that quantile and that future adverse movement remains
+  possible. A large result is not truncated for layout or persuasion.
+- Define technical decimal/integer precision and maximum serialized size during interface
+  design. Out-of-representation values return a structured calculation failure; they are
+  never clipped to the largest representable or UI-friendly financial value.
+- Human acceptance and override remain distinct auditable actions. Model narration,
+  silence, default controls, or calculator output cannot create mandate authority.
+- Do not claim that absence of a cap means all large recommendations are economically
+  reasonable. The calculator reports its evidence; the customer decides risk tolerance.
+
+**Verification:** NOT RUN. Required evidence includes exact zero, sub-basis-point ceiling,
+ordinary, very large, and out-of-representation fixtures; unchanged sensitivity display;
+no hidden UI truncation; structured technical failure instead of clipping; acceptance and
+override audit separation; and proof that caller/model output cannot impose a bound.
+
+**Would change if:** external legal, contractual, or empirically validated risk requirements
+justify a bound. Such a bound requires a separate human-approved policy and must be shown
+as distinct from the historical estimate rather than rewriting it.
+
+## D22 / Person 2 D-02P — Heightened owner confirmation for lower RT overrides
+
+**Status:** APPROVED
+
+**Approved by:** Person 2 / human decision owner
+
+**Approved at:** 2026-08-29T14:41-05:00
+
+**Context:** D10/D-02D permits the authenticated customer to accept or override RT, but an
+override below the recommendation increases exposure and needs evidence of informed human
+intent without turning the advisory calculator into the authorization authority.
+
+**Alternatives considered:**
+
+- **A — Explicit owner override with heightened confirmation.** Only the authenticated
+  mandate owner may override; lower values require rationale, side-by-side USD impact and
+  sensitivities, an unselected understanding confirmation, and a new mandate version.
+- **B — Prohibit overrides below RT.** Strong paternal protection but makes RT binding
+  authority and contradicts the approved customer-responsibility model.
+- **C — Require two human approvers below RT.** Strong enterprise governance but adds
+  identity/workflow scope inappropriate for the current individual-customer baseline.
+- **D — Unrestricted override.** Simple but provides weak evidence that the owner saw and
+  understood the increased exposure.
+
+**Decided:** Alternative A. Only the authenticated current mandate owner may set an RT
+override. If the override is below the recommendation, the owner must enter a non-empty
+rationale, review the recommended and overridden basis points and buffered USD effects
+side by side with all sensitivities/limitations, and perform a separate explicit
+understanding confirmation that is not preselected. Acceptance creates a new mandate
+version and causes every unresolved proposal to be evaluated again. A higher override
+uses the normal explicit mandate-change confirmation and remains fully audited.
+
+**Why:** A preserves human authority while making a reduction in protection deliberate,
+visible, attributable, and replayable. It prevents voice text, model output, or a default
+UI state from silently lowering the authorization buffer.
+
+**Trade-off accepted:** a customer may still knowingly select an insufficient margin.
+The additional friction can slow negotiation and does not prove financial sophistication
+or eliminate product/legal obligations. Single-owner approval may be insufficient for a
+future enterprise account.
+
+**Implementation contract:**
+
+- Authorize override operations against authenticated identity and current mandate
+  ownership server-side. Voice identity, caller claims, LLM assertions, carrier messages,
+  or possession of a proposal identifier are not sufficient.
+- Compare exact integer basis points. `override < recommendation` invokes the heightened
+  flow; equality is acceptance; a higher value is a normal explicit override. Negative,
+  malformed, non-integer, or technically unsafe values are rejected.
+- Before lower confirmation, show recommended/override bps, unbuffered and both buffered
+  USD amounts, absolute/percentage protection reduction, 95th/97.5th/99th/worst values,
+  data/calculator versions, and every mandatory limitation adjacent to the action.
+- Require a non-whitespace rationale with a bounded safe length and a distinct unselected
+  confirmation control. No generic model-generated rationale, silence, or single ambiguous
+  voice utterance satisfies either requirement.
+- Persist the rationale as untrusted user text with output encoding, the exact disclosure
+  version shown, confirmation event, authenticated actor, timestamps, old/new mandate
+  versions, RT evidence reference, and before/after values. Never execute or prompt-inject
+  from the rationale.
+- Use optimistic concurrency/idempotency so stale or duplicated confirmations cannot
+  overwrite a newer mandate. Successful change atomically creates a new immutable version.
+- Invalidate cached authorization decisions and re-evaluate every unresolved/pending
+  proposal against the new mandate. Previously executed side effects are not retroactively
+  rewritten; their original evidence remains immutable.
+- The model may explain the structured flow but cannot submit, confirm, approve, or lower
+  an override and receives no capability that bypasses the deterministic endpoint.
+
+**Verification:** NOT RUN. Required evidence includes owner/non-owner identity, lower/equal/
+higher values, missing/whitespace/oversized/injection-like rationale, unselected and stale
+confirmation, duplicate/idempotent submission, concurrent mandate update, exact USD impact,
+disclosure persistence, pending-proposal invalidation/re-evaluation, immutable prior actions,
+and proof that voice/model/carrier content cannot complete the override.
+
+**Would change if:** enterprise roles or regulation require dual control, suitability
+checks, or prohibit lower overrides. Those requirements need a separate approved identity
+and governance model; they must not be inferred by RT.
+
+## D23 / Person 2 D-03A — Authoritative mandate changes through dashboard only
+
+**Status:** APPROVED
+
+**Approved by:** Person 2 / human decision owner
+
+**Approved at:** 2026-08-29T14:42-05:00
+
+**Context:** D22 identifies the authenticated mandate owner but does not define which
+interaction channel may create authority. Voice transcription and LLM interpretation are
+probabilistic and exposed to caller manipulation, replay, ambiguity, and prompt injection.
+
+**Alternatives considered:**
+
+- **A — Authenticated dashboard only.** Voice/models may explain but cannot draft, accept,
+  override, or mutate the authoritative mandate; the dashboard presents an exact diff for
+  explicit confirmation.
+- **B — Voice initiation with dashboard confirmation.** Preserves final dashboard authority
+  but adds non-authoritative draft state and more confusion/injection/replay test surface.
+- **C — Voice mutation with a spoken PIN.** Conversational but vulnerable to recording,
+  interception, transcription error, social engineering, and injected dialogue.
+- **D — Voice mutation after model confirmation.** Fast but places probabilistic
+  interpretation in the authorization boundary and violates complete mediation.
+
+**Decided:** Alternative A. Every authoritative mandate creation or mutation—including RT
+acceptance/override, currency margin, cost cap, escalation rule, or other constraint—occurs
+only through an authenticated dashboard flow mediated by deterministic server policy.
+Voice, Realtime sessions, input/output models, callers, carriers, and model-issued tool
+requests have no capability to create drafts or write mandate state.
+
+**Why:** A makes the primary security principle structural: a caller statement cannot
+modify authority because the call path has no mandate-write capability. It also creates a
+clear Trial-by-Fire demonstration of prompt-injection resistance by architecture.
+
+**Trade-off accepted:** the owner must leave or accompany the call experience with the
+dashboard to change constraints. This adds friction and prevents a fully voice-only setup.
+Channel separation does not by itself authenticate the owner; dashboard identity/session
+requirements still need explicit design and testing.
+
+**Implementation contract:**
+
+- Expose mandate-write operations only to the authenticated dashboard backend boundary.
+  Do not include mandate create/update/accept/override tools in Realtime or model tool sets.
+- The voice path may retrieve a minimal policy-safe summary needed to explain a denial but
+  cannot create a pending draft, confirmation token, mutation intent, or reusable write payload.
+- Dashboard displays a canonical field-level before/after diff, affected pending proposals,
+  disclosures, and policy consequences. Confirmation controls are unselected and bound to
+  authenticated actor, current mandate version, exact canonical payload, and short expiry.
+- Server-side policy independently parses, validates, authorizes, and atomically persists
+  the confirmed change. Client UI state, model prose, and hidden fields are never authority.
+- Use CSRF protection, secure session handling, reauthentication/step-up rules as separately
+  approved, optimistic concurrency, idempotency, and immutable audit evidence. A stale or
+  replayed confirmation fails without partial mutation.
+- Any endpoint reachable with a voice/session/model credential is technically unable to
+  invoke the dashboard mutation service. Prove capability separation, not merely prompt rules.
+- After mutation, invalidate prior authorization caches and re-evaluate unresolved proposals
+  as required by D22. Do not retroactively change completed side-effect evidence.
+- Logs and UI explanations avoid exposing full mandate contents where unnecessary and never
+  expose session credentials, confirmation tokens, or internal authorization details.
+
+**Verification:** NOT RUN. Required evidence includes absent mandate-write voice tools,
+direct endpoint calls with voice/model credentials, injected caller instructions, dashboard
+owner/non-owner authorization, canonical diff tampering, CSRF, stale/expired/replayed tokens,
+concurrent versions, duplicate requests, atomicity, audit attribution, pending-proposal
+re-evaluation, and architectural proof that probabilistic components lack the capability.
+
+**Would change if:** a future channel can provide independently verified strong human
+authentication and deterministic transaction confirmation without granting the model
+authority. Any voice-initiated draft or mutation requires a new threat model and approval.
+
+## D24 / Person 2 D-03B — Supabase email OTP plus TOTP for mandate writes
+
+**Status:** APPROVED
+
+**Approved by:** Person 2 / human decision owner
+
+**Approved at:** 2026-08-29T14:44-05:00
+
+**Context:** D23/D-03A confines mandate mutation to the dashboard, but channel separation
+does not authenticate the mandate owner or protect a sensitive write after ordinary session
+compromise. The repository already contains Supabase dependencies, but that scaffold did
+not constitute approval of an identity design.
+
+**Alternatives considered:**
+
+- **A — Supabase email OTP plus required TOTP for mandate writes.** Passwordless primary
+  sign-in with authenticator-app MFA/AAL2 for sensitive authority changes; Basic MFA is
+  currently included in Supabase Free.
+- **B — Supabase email OTP only.** Simpler, but compromise of email or an ordinary active
+  session is sufficient to change financial authority.
+- **C — GitHub OAuth through Supabase.** Convenient for developers but unsuitable as the
+  default customer identity model and still requires step-up protection.
+- **D — Local demo identity.** Fast but cannot substantiate trustworthy ownership or
+  authorization claims.
+
+**Decided:** Alternative A. Use Supabase Auth email OTP for the initial dashboard sign-in.
+Mandate creation, RT acceptance/override, and every mandate mutation require a verified
+TOTP enrollment and current AAL2 evidence, followed by Volta's deterministic short-lived
+transaction confirmation. The backend independently verifies the signed JWT, issuer,
+audience, expiry, session/subject, MFA assurance, mandate ownership, and current mandate
+version before processing a write.
+
+**Why:** A provides two distinct factors at no subscription charge for the hackathon and
+keeps identity enforcement separate from voice/model content. It uses the scaffolded
+provider while retaining deterministic application authorization and audit evidence.
+
+**Trade-off accepted:** enrollment and TOTP entry add friction and account-recovery risk.
+Email security still affects initial access, and TOTP is phishable. Supabase Free currently
+lacks some plan-level session controls and retains Auth audit logs briefly, so Volta must
+enforce sensitive-action freshness and durable audit evidence itself. The built-in SMTP
+service is restricted to pre-authorized project-team addresses and is not a production
+customer email service.
+
+**Cost and scope contract:**
+
+- Hackathon baseline subscription cost is USD 0 under the currently documented Supabase
+  Free allowances and Basic MFA inclusion. Revalidate pricing/terms before deployment.
+- Use only pre-authorized project-team email addresses with Supabase's built-in sender.
+  External-customer email requires an approved custom SMTP provider, its monetary/privacy/
+  deliverability costs, and a new recorded decision; do not silently add one.
+- TOTP uses the customer's authenticator application and creates no per-message SMS cost.
+  Phone MFA is outside scope and must not be enabled without cost/security approval.
+
+**Implementation contract:**
+
+- Use Authorization Code with PKCE where applicable and validate provider-issued tokens
+  server-side against trusted signing keys/claims. Never decode without signature and claim
+  verification, trust client-provided user IDs, or use model/caller identity assertions.
+- Require verified email and enrolled/verified TOTP before the first mandate write. Enforce
+  AAL2 and a separately approved recent-authentication window for every sensitive action;
+  a long-lived refreshable session alone is insufficient.
+- Bind Volta's one-time transaction confirmation to actor, session, mandate/version,
+  canonical diff/payload digest, action, issue/expiry time, and nonce; consume atomically.
+- Check the underlying Supabase session where strong logout/revocation guarantees are
+  required rather than relying only on an unexpired JWT. Authentication-provider outage
+  or unverifiable session state fails closed for writes.
+- Use secure, `HttpOnly`, `Secure`, appropriately `SameSite` cookies or an equivalently
+  reviewed token architecture; never store service-role credentials in browser code or
+  expose them in logs, URLs, errors, source maps, or repository files.
+- Apply CSRF defenses, strict redirect allowlists, rate limits, generic OTP error messages,
+  replay protection, recovery controls, and durable Volta audit records independent of the
+  provider's short free-plan Auth-log retention.
+- Database authorization uses least privilege and RLS defense-in-depth, but the backend
+  reference monitor still performs deterministic ownership and policy checks. Possession
+  of an `authenticated` JWT alone is not authorization to mutate any mandate.
+- Recovery, factor reset, email change, and owner transfer are high-risk flows and remain
+  disabled until separately approved; administrators cannot bypass this through model tools.
+
+**Verification:** NOT RUN. Required evidence includes OTP enrollment/sign-in, unverified
+email, absent/invalid/replayed TOTP, AAL1 versus AAL2, wrong issuer/audience/signature,
+expired JWT, revoked/missing session, non-owner, CSRF, redirect abuse, confirmation payload
+tampering/expiry/replay/concurrency, cookie/token leakage checks, service-role absence from
+the client, provider outage, durable audit retention, and voice/model inability to authenticate.
+
+**Would change if:** provider terms, security behavior, delivery restrictions, or product
+requirements no longer fit. Production external email, passkeys, different MFA, enterprise
+SSO, recovery, or paid session controls each require explicit review and approval.
+
+## D25 / Person 2 D-03C — Fresh TOTP and two-minute confirmation per mandate write
+
+**Status:** APPROVED
+
+**Approved by:** Person 2 / human decision owner
+
+**Approved at:** 2026-08-29T14:45-05:00
+
+**Context:** an AAL2 session proves that MFA occurred but does not by itself prove immediate
+second-factor participation in each authority change. Mandate writes are infrequent,
+high-consequence actions, so recency and transaction binding must be explicit.
+
+**Alternatives considered:**
+
+- **A — Fresh TOTP for every mandate write.** Each write requires a new TOTP challenge,
+  followed by a single-use confirmation bound to the exact transaction and valid for two
+  minutes.
+- **B — Five-minute MFA window.** Reduces repeated challenges but permits several authority
+  changes from a briefly unattended or stolen session.
+- **C — Fifteen-minute MFA window.** More convenient for configuration sessions but
+  materially increases post-authentication exposure.
+- **D — AAL2 session only.** Relies on potentially old MFA state and provides no sensitive-
+  action recency guarantee.
+
+**Decided:** Alternative A. Every mandate creation, RT acceptance, RT override, and other
+mandate mutation requires a newly completed TOTP challenge for that action. Successful
+verification creates a server-side transaction confirmation bound to the exact canonical
+mutation; it expires two minutes after issuance and can be consumed exactly once.
+
+**Why:** A produces direct evidence that the second factor participated immediately in
+each authority change and minimizes what an unattended authenticated session can do. The
+friction is acceptable because mandate writes should be uncommon.
+
+**Trade-off accepted:** customers must enter TOTP repeatedly during configuration and may
+experience expiration while reviewing a change. Clock skew, accessibility, and device-loss
+support need careful handling; recovery remains deliberately unavailable pending approval.
+
+**Implementation contract:**
+
+- Do not treat an existing AAL2 claim alone as fresh authorization. Start and verify a new
+  provider-backed TOTP challenge for each canonical mandate-write action.
+- On successful challenge, issue/store an opaque, cryptographically random confirmation
+  reference bound server-side to authenticated subject, Supabase session ID, mandate ID and
+  current version, action, exact canonical payload/diff digest, issue time, expiry time,
+  challenge evidence reference, and unused status.
+- Expiry is exactly two minutes measured using trusted server time. `now < expires_at` is
+  usable; `now >= expires_at` is expired. Browser/model/caller clocks are ignored.
+- Atomically validate and consume the confirmation in the same transaction as the mandate
+  write. Mark it consumed even if a duplicate client request races; idempotent response
+  semantics must not permit a second mutation.
+- Any payload, mandate version, actor, session, or action change requires a new TOTP
+  challenge. Confirmation references cannot be transferred between users, tabs, mandates,
+  actions, or sessions.
+- Rate-limit challenge creation and verification by account/session/network signals without
+  exposing whether an account or factor exists. Do not log TOTP values or confirmation
+  secrets; redact sensitive provider errors.
+- A timeout returns the user to review with a stable draft display but no authority. The
+  user must inspect the current mandate/diff and complete a new challenge; never auto-submit.
+- Voice/model paths cannot initiate challenges, receive confirmation references, or consume
+  them. Dashboard client possession still does not replace all server-side binding checks.
+
+**Verification:** NOT RUN. Required evidence includes a new challenge per action, previous-
+AAL2 rejection, expiry immediately before/at/after two minutes, server/client clock skew,
+single-use and concurrent consumption, payload/action/actor/session/mandate/version swaps,
+duplicate idempotency, rate limiting, redaction, timeout/review behavior, provider outage,
+and proof that voice/model paths cannot initiate or consume confirmation.
+
+**Would change if:** usability testing demonstrates unacceptable friction and an alternative
+provides equivalent transaction-bound proof. Any reusable freshness window, passkey, or
+different confirmation lifetime requires a new approved threat-model decision.
+
+## D26 / Person 2 D-04A — Two-phase deterministic external commitment
+
+**Status:** APPROVED
+
+**Approved by:** Person 2 / human decision owner
+
+**Approved at:** 2026-08-29T14:47-05:00
+
+**Context:** a negotiated acceptance may create an external carrier obligation and an
+internal committed record. Authorizing a proposal long before execution, or treating model
+output as commitment authority, permits mandate, quote, FX, or state changes to bypass
+complete mediation and makes timeout/retry behavior unsafe.
+
+**Alternatives considered:**
+
+- **A — Two-phase deterministic commit protocol.** Prepare an exact structured operation,
+  then revalidate immediately before one idempotent external side effect; represent
+  uncertain outcomes explicitly for reconciliation.
+- **B — Authorize once at proposal creation and execute later.** Simpler but permits
+  authorization evidence to become stale before the consequential mutation.
+- **C — Dashboard approval for every commitment.** Strong human control but removes the
+  autonomous in-mandate negotiation central to the challenge.
+- **D — Output-model commit decision.** Conversationally smooth but makes probabilistic
+  behavior an authorization authority.
+
+**Decided:** Alternative A. The model can propose only a typed immutable commitment
+candidate. Deterministic policy may create a short-lived `PREPARED` operation bound to the
+exact current mandate/version, state/version, carrier/quote, comprehensive cost components,
+FX and calendar evidence, accepted margin, all-in USD authorization value, and canonical
+outbound commitment payload. Immediately before the sole external side-effect adapter is
+invoked, policy revalidates every condition and atomically claims the operation for one
+idempotent attempt. Terminal/safety states include `COMMITTED`, `DENIED`, `EXPIRED`, and
+`UNKNOWN`; `UNKNOWN` requires reconciliation and cannot be retried as if nothing happened.
+
+**Why:** A preserves autonomous action inside human-issued authority while proving complete
+mediation at the moment that matters. It makes crashes, duplicate callbacks, and ambiguous
+carrier responses explicit state-machine cases rather than accidental duplicate bookings.
+
+**Trade-off accepted:** external systems and Volta's database cannot generally share one
+atomic transaction. The protocol therefore adds leases, idempotency, durable outbox/audit
+records, reconciliation, and more states. A carrier that lacks idempotency or status lookup
+may be unsafe to support for binding commitments.
+
+**Implementation contract:**
+
+- Only typed canonical domain data enters policy. Free text and model rationale are evidence,
+  never authoritative fields. Canonicalization/versioning occurs before hashes or signatures.
+- `PREPARED` stores immutable references/digests for actor/operation, current mandate and
+  state versions, carrier and quote identity/version/expiry, every comprehensive-all-in cost
+  component, original currencies, FX snapshot/cross-check/margin, calculated USD values,
+  calendar/RT evidence where applicable, proposed conditions, outbound payload, policy and
+  schema versions, authorization result/reasons, and preparation/expiry timestamps.
+- Preparation performs no external binding side effect and grants no reusable general
+  permission. Its exact operation identifier and payload digest cannot authorize another offer.
+- Immediately before dispatch, acquire an atomic claim/lease and re-read authoritative
+  mandate, operation, quote, FX freshness/divergence, state, time window, resource limits,
+  and revocation/cancellation flags. Any mismatch deterministically denies or expires before
+  the adapter receives a request.
+- The external adapter accepts only a policy-issued execution capability scoped to the exact
+  claimed operation; tools/models cannot call it directly. Pass one stable idempotency key
+  derived from the operation identity where the carrier supports it.
+- Record request intent durably before dispatch without falsely marking commitment. Validate
+  and preserve the external response, carrier reference, timestamps, payload/result digests,
+  and reason-coded state transition. Emit notifications through a durable outbox after state
+  transition; notification failure never changes authorization truth.
+- Definite success becomes `COMMITTED` once. Definite rejection becomes a reason-coded safe
+  terminal failure. Timeout, connection loss after dispatch, malformed/contradictory response,
+  or crash with possible dispatch becomes `UNKNOWN`, blocks automatic retry and conflicting
+  negotiation, and enters deterministic/manual reconciliation.
+- A duplicate request/callback returns the existing operation result and cannot repeat the
+  side effect. `COMMITTED` is immutable except for separately modeled cancellation/compensation;
+  records are never overwritten to make state appear clean.
+- Prepared lifetime, claim lease, supported-carrier idempotency/reconciliation requirements,
+  and unknown-outcome escalation timing remain separate human decisions.
+
+**Verification:** NOT RUN. Required evidence includes proposal without side effect, exact
+payload/version binding, mandate/state/quote/FX changes between phases, expiry, concurrent
+claims, duplicate dispatch/callback, crash before/during/after request, timeout with possible
+success, malformed/conflicting carrier results, no-idempotency carrier, outbox failure,
+`UNKNOWN` retry prohibition/reconciliation, and proof that model/tool paths lack adapter access.
+
+**Would change if:** a carrier provides a stronger transactional interface or the product
+requires human approval for specific commitment classes. No change may weaken immediate
+pre-side-effect policy revalidation or permit ambiguous automatic retry.
+
+## D27 / Person 2 D-04B — Thirty-second prepared-operation lifetime
+
+**Status:** APPROVED
+
+**Approved by:** Person 2 / human decision owner
+
+**Approved at:** 2026-08-29T14:55-05:00
+
+**Context:** D26/D-04A requires a short-lived `PREPARED` operation but left its lifetime
+undefined. Quote, FX, mandate, and negotiation state can change, so an executable capability
+must remain close to the revalidation and dispatch moment.
+
+**Alternatives considered:**
+
+- **A — Thirty seconds.** Expire 30 seconds after trusted server preparation or at any
+  earlier underlying validity boundary; dispatch still performs complete revalidation.
+- **B — Two minutes.** More tolerant of processing delay but leaves stale executable state
+  available four times longer.
+- **C — Carrier quote expiry only.** Simple but ignores earlier FX, mandate, operation, and
+  policy validity changes.
+- **D — No fixed lifetime.** Relies solely on final revalidation and increases stale-state
+  and replay exposure.
+
+**Decided:** Alternative A. A `PREPARED` operation expires exactly 30 seconds after its
+trusted server-side `prepared_at`, or sooner at the earliest bound quote, FX, mandate,
+operation, policy, or other required evidence expiry. It cannot be extended, refreshed,
+or revived; a new proposal/preparation is required after expiry. Final dispatch still
+performs every D26 revalidation.
+
+**Why:** A leaves enough time for normal server-side prepare-and-dispatch while sharply
+limiting delayed/replayed executable state. It gives Trial-by-Fire a clear deterministic
+expiry boundary without pretending TTL replaces complete mediation.
+
+**Trade-off accepted:** transient latency or pauses can expire an otherwise valid offer,
+requiring a new preparation and possibly new carrier interaction. This favors safety over
+continuity and may need tuning from measured production latency.
+
+**Implementation contract:**
+
+- Set `expires_at = min(prepared_at + 30 seconds, every applicable bound validity end)`
+  using trusted server time and explicit UTC instants. Caller, model, carrier, and browser
+  clocks cannot determine or extend expiry.
+- Boundary semantics are `now < expires_at` eligible for final revalidation and
+  `now >= expires_at` expired. Acquisition/claim must atomically test this condition.
+- Persist preparation/expiry instants, each candidate earlier bound and selected minimum,
+  trusted-clock/version evidence, and the resulting reason code.
+- Expired operations transition once to `EXPIRED`, cannot be claimed/dispatched, and cannot
+  have their payload or timestamps edited. Duplicate expiry processing is idempotent.
+- Creating a replacement requires a new operation ID, current evidence, policy evaluation,
+  payload digest, and idempotency key. Never copy an old execution capability.
+- A timer or background cleanup is not the security boundary; every read/claim/dispatch
+  independently checks expiry. Cleanup may remove only according to approved retention rules.
+- Final revalidation remains mandatory even one instant after preparation. Passing TTL is
+  necessary but never sufficient authorization.
+
+**Verification:** NOT RUN. Required evidence includes immediately before/at/after 30
+seconds, an earlier quote/FX/evidence expiry, future/skewed client/model time, cleanup delay,
+concurrent claim at the boundary, duplicate expiry, attempted extension/revival, replacement
+identity/evidence, and proof that an unexpired operation still fails changed-state checks.
+
+**Would change if:** measured end-to-end dispatch latency shows safe operations routinely
+cannot finish preparation-to-claim within 30 seconds. Any increase requires latency evidence,
+threat review, and human approval; processing must not extend TTL dynamically.
+
+## D28 / Person 2 D-04C — No automatic redispatch after execution claim
+
+**Status:** APPROVED
+
+**Approved by:** Person 2 / human decision owner
+
+**Approved at:** 2026-08-29T15:01-05:00
+
+**Context:** after an external dispatch is claimed, a worker can crash or lose the response
+after the carrier has already accepted the request. Returning the operation to `PREPARED`
+when a lease expires can cause a second binding commitment.
+
+**Alternatives considered:**
+
+- **A — Never automatically redispatch a claimed operation.** Atomic claim moves to
+  `EXECUTING`; lost certainty becomes `UNKNOWN` and only status reconciliation may resolve it.
+- **B — Redispatch automatically after lease expiry.** Improves availability but risks a
+  duplicate commitment when the first request succeeded without a recorded response.
+- **C — Redispatch only for carriers claiming idempotency.** Practical, but correctness then
+  depends on a potentially incomplete or misunderstood external guarantee.
+- **D — Let an operator reset to prepared.** Removes automated retry but still permits an
+  unsafe resend and weakens immutable transition evidence.
+
+**Decided:** Alternative A. Once policy atomically claims a `PREPARED` operation, it enters
+`EXECUTING` and can never transition back to `PREPARED`. A crash, dispatch timeout,
+connection loss, ambiguous/malformed response, stale executing watchdog, or any inability
+to prove definite success or definite rejection transitions to `UNKNOWN`. Neither a worker,
+scheduler, model, nor operator may redispatch that operation. Reconciliation may only query
+or receive carrier status using the existing operation/idempotency/reference evidence.
+
+**Why:** A makes at-most-one dispatch attempt the safe local invariant and prevents recovery
+logic from converting uncertainty into a duplicate obligation. Availability loss is visible
+and auditable rather than hidden behind a retry.
+
+**Trade-off accepted:** operations can remain blocked in `UNKNOWN`, require carrier lookup
+or human investigation, and delay negotiation. Even a carrier with strong idempotency is
+not used for automatic redispatch under this baseline.
+
+**Implementation contract:**
+
+- Atomically compare-and-set `PREPARED -> EXECUTING` while checking D26/D27 policy,
+  versions, expiry, and claim uniqueness. Persist claimant, attempt number fixed at one,
+  trusted start time, idempotency key, request intent/payload digest, and audit event before I/O.
+- State transitions are monotonic. No code path, administrative endpoint, migration, model
+  tool, cleanup job, or lease expiry may transition `EXECUTING`/`UNKNOWN` to `PREPARED` or
+  create another dispatch attempt for the same logical commitment.
+- Configure a watchdog threshold separately from authorization TTL. Crossing it marks
+  unresolved execution `UNKNOWN`; it does not release or reacquire an execution capability.
+- Definite authenticated carrier success may transition `EXECUTING` directly to `COMMITTED`.
+  Definite authenticated rejection may transition to the approved failure state. Anything
+  ambiguous becomes `UNKNOWN` with reason-coded evidence.
+- Reconciliation is read/status-only with respect to the carrier commitment operation. It
+  uses the original idempotency key/carrier reference and cannot invoke a create/book/accept
+  endpoint or generate a replacement commitment.
+- A carrier status proving the original succeeded may transition `UNKNOWN -> COMMITTED` once;
+  status proving definitive rejection may transition to the approved failure state. Lack
+  of proof leaves `UNKNOWN`; absence of a result is not proof of rejection.
+- A genuinely new business attempt, if ever permitted after definitive rejection, requires
+  a new logical proposal/operation and fresh policy evaluation; that rule remains separate.
+- Block conflicting negotiation/commitment while `EXECUTING` or `UNKNOWN`. Notify/escalate
+  through the outbox without changing truth if notification fails.
+
+**Verification:** NOT RUN. Required evidence includes concurrent claims, crash before and
+after network send, timeout, response loss, malformed/contradictory result, watchdog expiry,
+worker/scheduler/operator retry attempts, carrier idempotency claims, query-only reconciliation,
+authenticated success/rejection resolution, absent status remaining unknown, immutable attempt
+count, conflicting-operation block, and proof that models/tools cannot reacquire dispatch.
+
+**Would change if:** a formally verified carrier protocol provides atomic exactly-once
+semantics and the team approves relying on it. Even then, the change requires carrier-specific
+tests and cannot become a generic retry policy.
+
+## D29 / Person 2 D-04D — Canonical policy-generated spoken acceptance
+
+**Status:** SUPERSEDED by D31/D-04F (originally approved)
+
+**Approved by:** Person 2 / human decision owner
+
+**Approved at:** 2026-08-29T15:41-05:00
+
+**Superseded at:** 2026-08-29T16:15-05:00. The decision owner clarified that carrier
+calls produce non-binding pre-agreements and that only a later official email can create
+the operational commitment. Preserve this entry as decision history; do not implement it.
+
+**Context:** in a telephone negotiation, the consequential external side effect may be the
+acceptance sentence itself rather than a structured booking API. Allowing an output model to
+compose final language after policy approval permits it to add, omit, or distort material
+terms and makes partial/interrupted audio an ambiguous commitment.
+
+**Alternatives considered:**
+
+- **A — Policy-generated canonical acceptance phrase.** The output model proposes a typed
+  acceptance, deterministic policy authorizes and generates the exact phrase, and audio
+  transmission begins in `UNKNOWN` until separate carrier confirmation evidence exists.
+- **B — Voice negotiation always non-binding.** Strongest legal/technical separation but
+  weakens the autonomous voice commitment central to the demonstration.
+- **C — Model-phrased acceptance after policy approval.** Natural conversation but allows
+  post-authorization semantic drift in the actual consequential output.
+- **D — Live human approval before acceptance.** Strong operational oversight but removes
+  autonomous in-mandate commitment.
+
+**Decided:** Alternative A. The models may propose only structured acceptance fields.
+Following D26/D27/D28 checks, deterministic trusted code renders one versioned canonical
+phrase containing the material approved terms; the model cannot edit or paraphrase it.
+Immediately before the first acceptance audio frame is handed to the output channel, the
+operation is atomically claimed and recorded as `EXECUTING`; once any such frame may have
+left Volta, loss of complete, evidenced delivery or response produces `UNKNOWN`. It becomes
+`COMMITTED` only under separately approved confirmation evidence. The phrase is never
+automatically repeated.
+
+**Why:** A preserves autonomous voice negotiation while moving commitment language into
+the deterministic authorization boundary. It makes the exact spoken payload replayable and
+treats audio uncertainty conservatively.
+
+**Trade-off accepted:** canonical speech is less natural and may still be interrupted,
+misheard, delayed, or legally interpreted differently. Technical state does not determine
+whether a contract formed under applicable law. Without reliable carrier confirmation,
+operations can remain `UNKNOWN` and block further commitment.
+
+**Implementation contract:**
+
+- Define a versioned renderer in trusted non-LLM code. Its inputs are only the exact typed
+  fields authorized in `PREPARED`; free text, model prose, retrieved content, and caller
+  wording cannot enter the commitment phrase.
+- The phrase states the carrier/offer reference, comprehensive all-in price and explicit
+  ISO 4217 currency, agreed service/scope, critical dates/window, and conditions needed to
+  distinguish the accepted offer. Omitted/unknown required fields make rendering/authorization
+  fail; never fill them with conversational inference.
+- Store canonical text, normalized structured fields, renderer/schema/language version,
+  payload digest, and the corresponding authorization evidence before audio transmission.
+- Use only an approved deterministic TTS/output path for this phrase. The output model may
+  introduce it or explain afterward but receives no capability to alter, append material
+  conditions to, overlap, or synthesize the acceptance audio.
+- Atomically claim/revalidate before handing the first frame to the channel. Preserve trusted
+  frame/event timestamps and channel delivery callbacks as transport evidence without
+  equating provider acceptance of a frame with the counterparty's contractual agreement.
+- Any first-frame handoff followed by disconnect, cancellation, barge-in, partial playback,
+  callback loss, timeout, or uncertain receipt becomes/remains `UNKNOWN`. Do not resume from
+  the middle, repeat, paraphrase, or create a second acceptance operation automatically.
+- Suppress all other model/tool audio while canonical acceptance is scheduled/transmitting.
+  Prompt injection cannot make ordinary model speech resemble an authoritative acceptance;
+  noncanonical attempts are denied and audited.
+- The UI/audit record distinguishes `authorized text`, `transport attempted`, `transport
+  evidence`, and `carrier confirmation`. It includes a legal/product limitation that Volta's
+  technical state alone does not determine contract formation.
+- Consent, recording, disclosure, retention, supported language, exact material fields, TTS
+  behavior, and sufficient carrier-confirmation evidence remain separate approvals.
+
+**Verification:** NOT RUN. Required evidence includes field omission/unknowns, model-added
+terms, payload/render-version mismatch, deterministic repeatability, first-frame atomicity,
+disconnect before/at/after first frame, barge-in and partial playback, callback loss, model
+audio suppression, prohibited replay/paraphrase, concurrent acceptance attempts, audit-layer
+distinctions, and proof that only policy capability can invoke canonical acceptance output.
+
+**Would change if:** legal review or carrier process requires a structured written/API
+confirmation, or speech delivery cannot be evidenced safely. In that case voice becomes
+non-binding rather than allowing model-authored commitment language.
+
+## D30 / Person 2 D-04E — Same-call DTMF carrier confirmation
+
+**Status:** SUPERSEDED by D31/D-04F (originally approved)
+
+**Approved by:** Person 2 / human decision owner
+
+**Approved at:** 2026-08-29T15:43-05:00
+
+**Superseded at:** 2026-08-29T16:15-05:00. DTMF confirmation is unnecessary because the
+call does not commit. Carrier verbal confirmation supports accuracy of a non-binding
+pre-agreement only. Preserve this entry as decision history; do not implement it.
+
+**Context:** transport completion proves only that Volta attempted to play acceptance audio;
+free-form carrier speech still depends on probabilistic audio capture, transcription, and
+semantic interpretation. A deterministic confirmation signal is needed before resolving a
+spoken acceptance from uncertainty to `COMMITTED`.
+
+**Alternatives considered:**
+
+- **A — Same-call DTMF confirmation.** After complete canonical playback, request a random
+  operation-bound key; only a valid Twilio-signed DTMF event from the same live call may
+  resolve the operation as committed.
+- **B — Model-interpreted verbal confirmation.** Natural but makes ASR/LLM semantics part
+  of the authorization boundary.
+- **C — Completed acceptance playback means committed.** Deterministic transport evidence
+  but no evidence that the carrier agreed.
+- **D — Human dashboard review of the recording.** Stronger semantic oversight but delays
+  autonomous completion and adds manual processing.
+
+**Decided:** Alternative A. After the canonical acceptance phrase finishes with complete
+transport evidence, trusted code gives a deterministic confirmation instruction and opens
+a short, operation-bound DTMF challenge on the same live call. A valid Twilio-signature-
+verified callback containing the expected key, correct call identity, operation/challenge,
+state, and timing may transition `UNKNOWN`/`EXECUTING` to `COMMITTED` exactly once. Missing,
+early, wrong, repeated, late, unsigned/invalid, or otherwise ambiguous input does not commit
+and leaves the operation `UNKNOWN` for reconciliation.
+
+**Why:** A uses a structured channel event that deterministic code can validate without
+asking an LLM to decide what the counterparty meant. It preserves autonomous completion
+and adds no service category beyond existing Twilio call duration.
+
+**Trade-off accepted:** a keypress proves interaction with the designed call flow but not
+the legal identity, authority, comprehension, or contractual intent of the person pressing
+it. DTMF can be mistyped, inaccessible, delayed, or lost. Legal review remains necessary
+before claiming that this evidence conclusively forms a contract.
+
+**Implementation contract:**
+
+- Generate the expected confirmation key using trusted cryptographic randomness from an
+  approved DTMF set; bind its challenge record to operation ID, exact acceptance payload
+  digest, Twilio Call SID, issue/expiry times, state/version, nonce, and unused status.
+- Do not reveal or request the key until trusted transport evidence says the complete
+  canonical acceptance phrase finished. A key received before challenge activation cannot
+  be buffered or later reused as confirmation.
+- Render confirmation instructions from a fixed versioned template that identifies the
+  accepted offer/reference and states that the key confirms those exact terms. The output
+  model cannot compose, omit, overlap, or alter this instruction.
+- Verify Twilio webhook signatures over the exact externally received URL and parameters
+  using the server-side Auth Token and current official validation procedure. Reject before
+  parsing state when signature, canonical URL/proxy configuration, call identity, or expected
+  account/application context is invalid. Never log the Auth Token.
+- Atomically validate challenge state/timing/key/call/operation/payload and consume it in
+  the same transaction as the single `COMMITTED` transition. Duplicate callbacks return
+  the existing result without another transition or notification.
+- A wrong/extra/multi-digit, missing, early, expired, call-disconnected, or conflicting event
+  is reason-coded evidence and cannot create a fresh challenge or automatic acceptance replay.
+- Verbal responses and transcripts may be retained as approved supporting evidence but are
+  never the deterministic commit oracle. Silence and model confidence do not count.
+- Preserve signature-validation outcome (not secret material), sanitized callback digest,
+  Call SID/reference, challenge/template versions, expected/received outcome without exposing
+  reusable secrets, timestamps, transport evidence, operation transition, and audit event.
+- Confirmation window, DTMF key set/attempt policy, consent/recording, caller/carrier identity
+  assurance, and reconciliation/escalation remain separate human decisions.
+
+**Verification:** NOT RUN. Required evidence includes complete versus partial playback,
+keypress before activation, expected/wrong/missing/multiple/late keys, replay/concurrent
+callbacks, different Call SID/operation/payload, forged/malformed signatures, reverse-proxy
+URL reconstruction, disconnects, duplicate notification suppression, supporting verbal
+confirmation without DTMF, secret/log redaction, and proof that model tools cannot activate,
+answer, extend, reset, or consume the challenge.
+
+**Would change if:** accessibility, carrier workflow, legal review, or telephony behavior
+makes DTMF unsuitable. Replacement must provide equally deterministic operation-bound
+evidence or require human review; probabilistic verbal classification cannot silently replace it.
+
+## D31 / Person 2 D-04F — Calls create pre-agreements; official email commits
+
+**Status:** APPROVED
+
+**Approved by:** Person 2 / human decision owner
+
+**Approved at:** 2026-08-29T16:15-05:00
+
+**Context:** D29/D-04D and D30/D-04E incorrectly treated spoken acceptance during the
+quotation call as the binding side effect. The decision owner clarified the intended
+business process: calls collect non-binding carrier quotations/pre-agreements; Volta later
+compares them and, according to a customer-selected mandate mode, either commits autonomously
+or escalates for human approval. Commitment is communicated through an official email.
+Volta does not manage payment.
+
+**Alternatives considered:**
+
+- **A — Non-binding calls; canonical email commitment with mandate-selected autonomy.**
+  Carrier speech confirms captured pre-agreement accuracy only. Deterministic policy selects
+  an eligible option, then either sends after autonomous authorization or dashboard approval.
+- **B — Calls may themselves commit.** The superseded spoken-acceptance/DTMF design; this
+  does not match the intended workflow and creates avoidable voice ambiguity.
+- **C — Always require human approval.** Strong oversight but removes the customer's option
+  to delegate autonomous in-mandate commitment.
+- **D — Autonomous email without a mandate setting.** Simple but lets the system determine
+  its own authority level rather than following explicit human-issued authority.
+
+**Decided:** Alternative A. Telephone calls are quotation and negotiation channels only.
+The model recaps the structured pre-agreement and asks the carrier/counterparty to confirm
+that the captured terms are accurate; a positive response creates supporting evidence for
+a `CARRIER_CONFIRMED_PREAGREEMENT`, never a commitment. After eligible pre-agreements are
+compared, the authoritative mandate field `commitment_mode` determines the path:
+`AUTONOMOUS` permits deterministic server policy to commit the selected eligible option
+without transaction-specific human approval; `HUMAN_ESCALATION` requires authenticated
+dashboard approval of that exact option. In both modes, the consequential side effect is
+one policy-generated official commitment email sent to the verified carrier/provider
+destination after immediate complete revalidation. Payment initiation, authorization,
+collection, custody, and settlement are outside Volta's scope.
+
+**Why:** A matches the actual business intent, preserves customer choice over delegated
+authority, and removes probabilistic voice semantics from the commitment boundary. It keeps
+the useful call recap while making the official written communication exact and auditable.
+
+**Trade-off accepted:** email delivery is not equivalent to receipt, reading, acceptance,
+or legal contract formation. Verbal carrier confirmation can be misheard or misclassified,
+so uncertain pre-agreement fields must be reviewed or excluded rather than treated as fact.
+Autonomous commitment increases customer-impact risk and needs strict mandate/configuration,
+selection, destination, template, and delivery controls. Email provider costs, retention,
+privacy, domain identity, and delivery evidence remain separate decisions.
+
+**Supersedes:** D29/D-04D and D30/D-04E in full. Their approved history remains recorded,
+but no canonical spoken acceptance or DTMF commitment flow may be implemented. D26/D-04A,
+D27/D-04B, and D28/D-04C continue to govern preparation, expiry, single dispatch, and
+unknown outcomes, with the official email send as the external commitment attempt.
+
+**Implementation contract:**
+
+- Call/session/model credentials have no commitment-email capability. During calls, tools
+  may create or update only typed non-binding pre-agreement candidates through deterministic
+  validation; state and UI label them visibly as non-binding.
+- The input model extracts a typed candidate; trusted code validates required fields,
+  currency/cost decomposition, quote identity/validity, service/scope, conditions, dates,
+  carrier identity/reference, and evidence links. Unknown/ambiguous fields remain unknown.
+- The output model may conversationally recap only from the validated structured candidate
+  and ask whether it is accurate. Carrier speech is untrusted evidence: positive model/ASR
+  interpretation proposes `carrier_confirmation`, while deterministic code binds transcript/
+  audio evidence and confidence/ambiguity metadata. It never authorizes or commits.
+- Contradiction, correction, low confidence, missing material terms, or unclear confirmation
+  prevents `CARRIER_CONFIRMED_PREAGREEMENT`. The model cannot convert politeness, silence,
+  partial assent, or unrelated affirmative language into authoritative terms.
+- Candidate comparison is deterministic over complete, current, mandate-eligible normalized
+  fields and an approved objective/tie-break policy. The LLM may explain results but cannot
+  choose the winner or alter eligibility. Selection policy remains a separate approval.
+- `commitment_mode` is an authoritative versioned mandate enum with no default. It can be
+  created/changed only through the D23/D24/D25 dashboard flow. Callers, carriers, models,
+  and per-call state cannot select or change it.
+- `AUTONOMOUS` means policy may prepare the selected eligible candidate only within every
+  current mandate constraint. `HUMAN_ESCALATION` means no email is prepared/sent until the
+  authenticated owner approves the exact candidate and canonical email payload through a
+  separately defined transaction-approval flow.
+- Immediately before email dispatch, re-read and revalidate mandate/mode/version, candidate
+  and selection versions, quote validity, comprehensive-all-in USD cost and FX evidence,
+  carrier/destination verification, exact service/conditions/dates, absence of conflicting
+  commitment, policy/template versions, and D26/D27 operation state. Any mismatch fails closed.
+- Trusted deterministic code renders the canonical official email from approved structured
+  fields and a versioned template. Models cannot edit subject, recipients, material terms,
+  attachments, reply-to, headers, or body. Missing required fields blocks sending.
+- Apply D28 at-most-one dispatch: durable intent before send; stable operation/idempotency
+  evidence where supported; no blind resend after a possible attempt. Definite provider
+  rejection is a failure; timeout/ambiguous acceptance or delivery becomes `UNKNOWN` for
+  reconciliation. Delivery/receipt/read evidence must never be overstated.
+- Preserve the pre-agreement and source evidence, recap and carrier response, eligibility/
+  comparison result, mandate mode/version, human approval where required, canonical email
+  and digest, verified destination provenance, provider request/result evidence, state
+  transitions, notifications, and audit versions. Sensitive data follows approved minimization
+  and retention rules.
+- No component receives payment credentials or payment tools. Email content must not claim
+  that Volta paid, transferred funds, guaranteed payment, or authorized a payment. Payment
+  instructions received from callers/carriers are untrusted data and cannot trigger action.
+- Product/legal wording distinguishes `pre-agreement recorded`, `commitment email attempted`,
+  `email provider accepted`, `delivered` where evidenced, and any later carrier acknowledgment.
+  Volta's internal label alone does not decide legal contract formation.
+
+**Verification:** NOT RUN. Required evidence includes call-only capability restrictions,
+complete/corrected/ambiguous recap, silence/polite affirmation/prompt injection, typed unknowns,
+non-binding labels, missing `commitment_mode`, autonomous versus escalation paths, mandate
+mode mutation only through dashboard, deterministic comparison and tie behavior, stale quote/
+FX/mandate before email, recipient/header/template injection, exact email rendering, provider
+timeout/rejection/duplicate callbacks, no resend from `UNKNOWN`, audit distinctions, and proof
+that no payment capability or claim exists.
+
+**Would change if:** legal review establishes a different commitment mechanism, a carrier
+requires portal/API confirmation, or official email cannot provide suitable evidence. Any
+new commitment channel needs its own complete-mediation and uncertainty decision; calls
+remain non-binding unless the decision owner explicitly changes this rule.
+
+## D32 / Person 2 D-04G — Lowest eligible buffered USD candidate; escalate if none
+
+**Status:** APPROVED
+
+**Approved by:** Person 2 / human decision owner
+
+**Approved at:** 2026-08-29T16:18-05:00
+
+**Context:** D31/D-04F requires deterministic comparison of carrier-confirmed
+pre-agreements but did not define `best`. The decision owner also requires escalation when
+no candidate satisfies the price constraint so the responsible person—not the agent—can
+decide whether to set a higher mandate bound or take another action.
+
+**Alternatives considered:**
+
+- **A — Lowest comprehensive buffered all-in USD cost.** Filter every hard mandate
+  constraint first; select the lowest policy-evaluated USD value and apply deterministic
+  tie-breaks. Escalate without commitment when no candidate is eligible.
+- **B — Customer-configured weighted score.** More expressive but requires approved weights,
+  normalization, provenance, missing-data, and anti-gaming rules.
+- **C — Customer-configured priority order.** Easier than a weighted score but adds mandate
+  and UI complexity and can produce unintuitive lexicographic results.
+- **D — Model-selected winner.** Flexible but nondeterministic and vulnerable to carrier
+  persuasion, prompt injection, and explanation drift.
+
+**Decided:** Alternative A. Policy first evaluates every complete, current,
+carrier-confirmed pre-agreement against every hard mandate constraint. Among eligible
+candidates it selects the lowest comprehensive all-in USD authorization value after the
+approved FX conversion and accepted safety margin. Exact ties resolve by earliest compliant
+delivery, then earliest trusted carrier-confirmation timestamp, then lexicographically
+smallest immutable candidate ID. If no candidate satisfies the price bound, Volta creates a
+reason-coded `NO_ELIGIBLE_CANDIDATE` escalation for the responsible mandate owner and sends
+no commitment email. The owner may keep the bound, change the mandate through D23–D25, seek
+new quotations, or abandon the operation; Volta cannot increase or waive the bound itself.
+
+**Why:** A makes `best` reproducible from already approved cost and eligibility evidence.
+It prevents an LLM from trading away price or other hard constraints and keeps exceptional
+risk appetite with the responsible human.
+
+**Trade-off accepted:** lowest eligible cost does not optimize soft service quality,
+reliability, sustainability, relationship value, or unmodeled carrier risk. Earliest delivery
+is only a tie-break after every hard service requirement passes. A future richer objective
+requires trusted data and a new decision.
+
+**Implementation contract:**
+
+- Take an immutable comparison snapshot of all candidate/version identifiers and the exact
+  authoritative mandate/version. Exclude, with reason codes, any candidate that is incomplete,
+  unconfirmed, expired, stale, unsupported, conflicting, or violates any hard constraint.
+- Compute each eligible value using D9 comprehensive cost, D7/D13/D14 FX evidence, and the
+  D8/D10–D22 accepted mandate margin. Compare exact integer USD minor-unit authorization
+  values; never compare formatted strings, floats, original-currency amounts, or model scores.
+- Sort eligible candidates by the tuple `(buffered_all_in_usd_minor_units,
+  compliant_delivery_instant, carrier_confirmed_at, immutable_candidate_id)` ascending.
+  Require canonical UTC delivery instants and trusted confirmation timestamps; ambiguous
+  tie-break data makes the candidate ineligible rather than guessed.
+- Re-run full eligibility and ranking during D26 preparation and immediately before D31
+  email dispatch. If the selected candidate, winner tuple, mandate, quote, FX, or competing
+  candidate set changed, invalidate preparation and recompute; never commit a stale winner.
+- If at least one candidate passes all constraints, use the winner under either D31 mode.
+  `AUTONOMOUS` permits preparation without transaction-specific approval;
+  `HUMAN_ESCALATION` presents that exact winner for approval.
+- If none passes specifically because buffered all-in USD exceeds the price bound, create
+  `NO_ELIGIBLE_CANDIDATE` with a safe comparison showing the bound, lowest candidate amount,
+  excess in USD, other exclusion reasons, quote expiries, and evidence versions. Do not
+  disclose unnecessary carrier-sensitive details across tenants.
+- No commitment email, booking, promise, payment action, or automatic mandate mutation occurs
+  from the no-candidate state. Voice/model output may explain choices but cannot suggest that
+  silence or conversational assent raises the cap.
+- Only the current authenticated mandate owner may change the bound, using a canonical diff,
+  fresh TOTP, and two-minute single-use confirmation under D23–D25. The owner may instead
+  explicitly keep it, request a new negotiation round, or abandon/cancel the operation.
+- Every mandate change versions authority and triggers complete candidate re-evaluation;
+  it does not retroactively make an earlier denial authorized. Preserve the escalation,
+  owner decision, new comparison, and all prior immutable evidence.
+- No eligible candidate for a non-price reason also fails closed with reason-coded escalation;
+  the system never relaxes service, date, scope, currency, cost-completeness, identity, or
+  other constraints merely because price is acceptable.
+
+**Verification:** NOT RUN. Required evidence includes one/many/no candidates, equal and
+near-equal minor-unit costs, every tie-break layer, original-currency traps, stale/expired/
+incomplete/unconfirmed candidates, price-only and mixed exclusions, candidate arrival/change
+during preparation, autonomous and human modes, no-email/no-payment escalation, owner/non-owner
+bound changes, fresh-MFA enforcement, re-evaluation after a new version, and proof that
+model/caller/carrier content cannot rank, relax, or increase authority.
+
+**Would change if:** users require approved soft preferences or risk-adjusted carrier quality.
+Any scoring/priority extension needs explicit criteria, trusted provenance, normalization,
+missing-data behavior, explainability, anti-gaming tests, and human approval.
+
+## D33 / Person 2 D-04H — Resend Free for official commitment email
+
+**Status:** APPROVED
+
+**Approved by:** Person 2 / human decision owner
+
+**Approved at:** 2026-08-29T16:21-05:00
+
+**Context:** D31/D-04F makes an official email the consequential commitment attempt, but
+the repository contains no transactional email provider. The hackathon needs a provider
+with authenticated-domain sending and delivery/bounce events at a disclosed cost.
+
+**Alternatives considered:**
+
+- **A — Resend Free.** REST API, webhooks, one custom domain, 3,000 emails/month and
+  100/day at USD 0/month under the currently documented plan.
+- **B — Amazon SES.** Low usage-based price (currently about USD 0.10 per 1,000 outbound
+  messages à la carte, plus applicable data/AWS charges) but more IAM, domain, region,
+  sandbox, and event infrastructure.
+- **C — Existing organizational SMTP.** Potentially no incremental fee, but unknown quotas,
+  authorization, credentials, sender policy, and delivery-event evidence.
+- **D — Mock email.** No external cost or credentials but cannot demonstrate an official
+  commitment attempt.
+
+**Decided:** Alternative A. Use Resend's Free transactional-email plan for the hackathon
+commitment channel, subject to the currently documented 3,000-message monthly and 100-message
+daily limits, one verified custom domain, and webhook availability. Trusted server code sends
+the D31 canonical email and verifies provider events. No account, domain, credential, or live
+send is authorized merely by this documentation decision; setup occurs only in the later
+approved development/configuration phase.
+
+**Why:** A provides the fastest credible API and event path at no provider subscription cost
+for hackathon volume, leaving engineering time for deterministic authorization and failure
+tests rather than cloud email infrastructure.
+
+**Trade-off accepted:** Free-plan quotas, shared sending infrastructure, provider availability,
+30-day provider data retention, one-domain limit, terms, and lack of paid guarantees constrain
+the system. Provider acceptance or delivery events do not prove that the carrier read, agreed
+with, or is legally bound by the message.
+
+**Cost and scope contract:**
+
+- Baseline Resend subscription cost is USD 0/month while usage remains within 100 emails/day
+  and 3,000 emails/month. Meter both limits in trusted server state and fail closed before send
+  when no quota is safely available; do not auto-upgrade or incur overage.
+- A sending domain is required. Domain registration/renewal, DNS administration, taxes,
+  payment-card/FX charges, and staff time are not included in USD 0. If no existing approved
+  domain is available, purchase and cost approval are separate decisions.
+- Current paid reference is Resend Pro at USD 20/month for 50,000 emails, with paid overages
+  as separately published. Volta cannot upgrade, enable overage, or attach a payment method
+  without explicit human cost approval.
+- Volta must retain required audit evidence independently under an approved retention policy;
+  provider retention is not the authoritative audit store.
+
+**Implementation contract:**
+
+- Place the Resend API key and webhook secret only in approved server-side secret storage.
+  Never expose them to dashboard/realtime clients, source control, logs, URLs, model context,
+  error bodies, test fixtures, screenshots, or generated artifacts.
+- Verify the custom sending domain and configure/review SPF, DKIM, and DMARC before live
+  commitment sends. Sender/display name/reply-to are allowlisted configuration, not model input.
+- Resolve recipient addresses only from a verified, versioned carrier/provider contact record
+  bound to the selected pre-agreement. Caller speech, transcript, model output, free-text quote
+  fields, or email body cannot directly become `To`, `CC`, `BCC`, or reply-to headers.
+- Render subject/body from a versioned deterministic template and typed authorized fields;
+  prevent header, HTML, URL, Unicode-confusable, and attachment injection. No attachments or
+  links are permitted until separately approved.
+- Enforce server-side daily/monthly quota counters with concurrency-safe reservation before
+  D26 dispatch. Quota absence/ambiguity denies before provider I/O; provider usage telemetry
+  is cross-checked but does not replace local evidence.
+- Use one stable operation idempotency/reference where supported, durable send intent, and
+  D28 at-most-one attempt. API timeout, connection loss, or ambiguous provider response becomes
+  `UNKNOWN`; never blind-resend. Definite provider rejection is reason-coded failure.
+- Verify webhook authenticity using Resend's current official signature procedure over the
+  exact raw request. Bind event/message ID to the original operation and reject forged,
+  replayed, out-of-order, cross-tenant, or contradictory events. Webhooks cannot mutate mandate.
+- Model provider lifecycle precisely: request attempted, provider accepted, delivered where
+  evidenced, delayed, bounced, complained, or unknown. Never label API acceptance as delivery
+  or delivery as carrier agreement/legal formation.
+- Minimize recipient/contact/contract data sent to the provider, disclose the processor as
+  required, and approve retention/deletion/region/privacy terms before live personal data.
+- Provide a non-live fake adapter for deterministic tests. Test mode cannot set production
+  commitment state or be visually indistinguishable from a real send.
+
+**Verification:** NOT RUN. Required evidence includes no/malformed/exposed keys, verified and
+unverified domains, SPF/DKIM/DMARC configuration evidence, recipient/header/body injection,
+wrong/cross-tenant contact, 99/100/101 daily and 2,999/3,000/3,001 monthly boundaries,
+concurrent reservation, timeout/rejection/ambiguous response, duplicate sends, valid/forged/
+replayed/out-of-order webhooks, lifecycle semantics, audit retention independent of provider,
+test-versus-live separation, and proof that models cannot address or send email.
+
+**Would change if:** free-plan terms, limits, deliverability, data handling, or reliability no
+longer fit, or an existing approved organizational service is safer. Any provider/plan/domain
+change requires cost, privacy, security, migration, and failure-semantics approval.
