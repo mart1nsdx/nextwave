@@ -2770,3 +2770,90 @@ clear audit/display of effective mode.
 **Would change if:** enterprise customers require an approved policy template or organization-
 level ceiling on autonomous use. Such inheritance must be restrictive, visibly resolved,
 versioned, and separately approved; no account-level autonomy default is introduced implicitly.
+
+## D40 / Person 2 D-04O — Reserve half of Resend Free quota for commitments
+
+**Status:** APPROVED
+
+**Approved by:** Person 2 / human decision owner
+
+**Approved at:** 2026-08-29T16:51-05:00
+
+**Context:** D33/D34/D36 make official commitments, non-binding recaps, and carrier mailbox
+challenges share Resend Free's current 100-message daily and 3,000-message monthly limits.
+Lower-consequence traffic must not consume all capacity before an authorized commitment.
+
+**Alternatives considered:**
+
+- **A — Reserve half for commitments.** Protect 50 daily and 1,500 monthly messages for
+  `OFFICIAL_COMMITMENT`; challenges/recaps share only the other half and cannot borrow.
+- **B — Dynamic reservation from active operations.** More efficient but forecast and
+  concurrency errors can leave an authorized commitment without capacity.
+- **C — First-come, first-served.** Simple but allows verification/recap traffic to exhaust
+  the channel required for a commitment.
+- **D — Automatic paid upgrade.** Improves availability but violates explicit USD spend
+  approval and could create uncontrolled recurring/overage charges.
+
+**Decided:** Alternative A. Of the currently documented Resend Free allowance, 50 messages
+per provider day and 1,500 messages per provider billing month are protected exclusively for
+`OFFICIAL_COMMITMENT`. Mailbox challenges and `PREAGREEMENT_RECAP` together may consume at
+most the other 50/day and 1,500/month. Commitments may use available unreserved capacity in
+addition to protected capacity. Lower-priority traffic can never borrow unused protected
+capacity, even near reset.
+
+**Why:** A gives deterministic capacity guarantees and quota oracles that are easy to test
+under concurrency. Wasted capacity is preferable to an authorized commitment failing because
+recaps or verification messages consumed the free allowance.
+
+**Trade-off accepted:** up to half the free allowance can remain unused, and non-binding
+onboarding/recap traffic may be denied while provider capacity is technically available.
+Provider counting/reset semantics and external usage can still create disagreement with local
+counters; ambiguity fails closed.
+
+**Cost and quota contract:**
+
+- Provider subscription remains USD 0/month within the current free limits. No paid upgrade,
+  overage, second account, SendGrid fallback, or message deferral past policy validity occurs
+  automatically.
+- Provider billing-period/day definitions, timezone, recipient counting, inbound-email counting,
+  test messages, retries, and provider-side sends must be verified against current terms before
+  implementation. Local counters use matching periods; uncertain semantics reserve conservatively.
+- Challenges remain additionally constrained by D37. Passing a per-contact/tenant challenge
+  limit does not imply shared non-commitment quota is available.
+
+**Implementation contract:**
+
+- Maintain concurrency-safe server-side counters/reservations for four scopes: total daily,
+  total monthly, non-commitment daily, and non-commitment monthly. Partition by exact provider
+  account/project and canonical provider reset periods; do not trust browser/model counters.
+- Before any send attempt, atomically reserve one unit in all applicable total scopes. A challenge
+  or recap must also reserve one unit in both non-commitment scopes and is denied at 50/day or
+  1,500/month even if total quota remains. A commitment is eligible up to 100/day and 3,000/month.
+- Boundary semantics: existing count `< limit` permits one reservation; count `>= limit` denies.
+  The reservation itself increments usage atomically before provider I/O.
+- Definite pre-dispatch validation/policy failures create no provider reservation. Once provider
+  I/O may have occurred—including timeout/connection ambiguity—the reservation remains consumed.
+  Definite provider rejection accounting follows verified provider quota semantics and cannot be
+  released merely to improve availability.
+- Provider callbacks, usage API, and dashboard telemetry reconcile local evidence but cannot
+  create extra capacity, decrement committed reservations without proven semantics, or authorize
+  sends. Local/provider disagreement pauses the affected class and escalates.
+- High-priority commitment capacity does not weaken D26–D28: quota reservation is necessary but
+  never sufficient authorization, and an ambiguous commitment attempt is never resent.
+- Denied challenges/recaps return reason-coded safe status and do not queue across a reset without
+  a new current request/evidence check. An authorized commitment denied for total quota becomes a
+  visible escalation/blocked operation; it does not switch provider or claim commitment.
+- Expose current safe remaining capacity and reset time to authorized operators with no tenant/
+  recipient leakage. Audit reservations, type, operation/contact ID, period IDs, provider result,
+  reconciliation, and reason codes without message bodies or secrets.
+
+**Verification:** NOT RUN. Required evidence includes non-commitment counts 49/50/51 daily and
+1,499/1,500/1,501 monthly, total counts 99/100/101 and 2,999/3,000/3,001, commitment use of
+unreserved/protected capacity, prohibited lower-priority borrowing, simultaneous reservations,
+period/timezone boundaries, provider/local disagreement, inbound/recipient/retry counting,
+pre-dispatch failure versus ambiguous attempt, provider outage, challenge-limit composition,
+reset with stale requests, and proof that model/caller cannot classify or alter quota type.
+
+**Would change if:** verified usage shows this partition materially blocks legitimate work or
+the provider changes its allowance. Any ratio/limit/paid tier change requires current pricing,
+capacity, abuse, and USD cost approval; unused protected quota is not automatically reallocated.

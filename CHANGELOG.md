@@ -37,6 +37,12 @@ DECISION_LOG D8; `policy/` is still the only thing that authorizes anything.
 → Affects: whoever wires `voice/session.py` to a real operation — pass the composed
 prompt and greeting instead of the module-level `SYSTEM_PROMPT` / `GREETING`. Físico:
 `domain/Operation` and `domain/Mandate` should map *into* `CallContext`, not replace it.
+## 2026-08-29T16:51-0500 · notify/policy/security · Person 2/Codex
+Human-approved D40/D-04O: protect 50 Resend messages/day and 1,500/month exclusively for
+official commitments; challenges and recaps share only the unreserved half.
+→ Affects: Person 2/3/4. Reserve atomically across total/class periods, never let lower-priority
+  traffic borrow, count ambiguous sends conservatively, and never auto-upgrade or fail over.
+
 ## 2026-08-29T16:49-0500 · mandate/dashboard/policy/security · Person 2/Codex
 Human-approved D39/D-04N: `commitment_mode` is an explicit unselected field on each operation
 mandate; it has no account default, template authority, or inheritance from prior work.
