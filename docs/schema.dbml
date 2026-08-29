@@ -25,21 +25,93 @@ Project volta {
 
 // ------------------------------- enums (CHECK constraints in reality)
 
-Enum call_direction        { inbound outbound }
-Enum call_status           { active ended failed }
-Enum audio_track           { inbound outbound }
-Enum speaker               { caller agent unknown }
-Enum delivery_status       { pending sent failed }
-Enum counterparty_kind     { carrier driver client terminal }
-Enum counterparty_status   { active suspended unknown }
-Enum operation_status      { draft sourcing awarding booked executing closed cancelled }
-Enum mandate_status        { active superseded expired revoked }
-Enum rfq_phase             { open awarding closed }
-Enum offer_status          { proposed superseded withdrawn expired accepted rejected }
-Enum cost_responsibility   { customer carrier shared unknown }
-Enum policy_verdict        { allow deny clarify escalate }
-Enum tool_outcome          { ok timeout error denied }
-Enum document_kind         { rfc sict_permit insurance vehicle_registration driver_license }
+Enum call_direction {
+  inbound
+  outbound
+}
+Enum call_status {
+  active
+  ended
+  failed
+}
+Enum audio_track {
+  inbound
+  outbound
+}
+Enum speaker {
+  caller
+  agent
+  unknown
+}
+Enum delivery_status {
+  pending
+  sent
+  failed
+}
+Enum counterparty_kind {
+  carrier
+  driver
+  client
+  terminal
+}
+Enum counterparty_status {
+  active
+  suspended
+  unknown
+}
+Enum operation_status {
+  draft
+  sourcing
+  awarding
+  booked
+  executing
+  closed
+  cancelled
+}
+Enum mandate_status {
+  active
+  superseded
+  expired
+  revoked
+}
+Enum rfq_phase {
+  open
+  awarding
+  closed
+}
+Enum offer_status {
+  proposed
+  superseded
+  withdrawn
+  expired
+  accepted
+  rejected
+}
+Enum cost_responsibility {
+  customer
+  carrier
+  shared
+  unknown
+}
+Enum policy_verdict {
+  allow
+  deny
+  clarify
+  escalate
+}
+Enum tool_outcome {
+  ok
+  timeout
+  error
+  denied
+}
+Enum document_kind {
+  rfc
+  sict_permit
+  insurance
+  vehicle_registration
+  driver_license
+}
 
 Enum commitment_state {
   VERBAL        [note: 'said on the call, binds nobody']
@@ -54,11 +126,38 @@ Enum commitment_state {
 }
 
 Enum cost_category {
-  transport fuel tolls port terminal gate handling inspection
-  equipment chassis container storage waiting detention demurrage
-  pickup destination unloading return additional_stop special_cargo
-  permits security insurance customs tax fee reimbursement
-  payment_charge contingency discount other
+  transport
+  fuel
+  tolls
+  port
+  terminal
+  gate
+  handling
+  inspection
+  equipment
+  chassis
+  container
+  storage
+  waiting
+  detention
+  demurrage
+  pickup
+  destination
+  unloading
+  return
+  additional_stop
+  special_cargo
+  permits
+  security
+  insurance
+  customs
+  tax
+  fee
+  reimbursement
+  payment_charge
+  contingency
+  discount
+  other
 }
 
 // ------------------------------- call and audio
@@ -75,7 +174,7 @@ Table call_cases {
   to_number          text
   started_at         timestamptz [not null, default: `now()`]
   ended_at           timestamptz
-  metadata           jsonb [not null, default: `'{}'`]
+  metadata           jsonb [not null]
   created_at         timestamptz [not null, default: `now()`]
 
   Note: 'One auditable case per telephone call. Not a booking and not a commitment. Eleven tables reference this.'
@@ -141,12 +240,12 @@ Table call_recaps {
   call_sid             text [pk]
   case_id              uuid
   summary              text [not null]
-  key_points           jsonb [not null, default: `'[]'`]
-  quoted_prices        jsonb [not null, default: `'[]'`]
-  names                jsonb [not null, default: `'[]'`]
-  conditions           jsonb [not null, default: `'[]'`]
-  objections           jsonb [not null, default: `'[]'`]
-  changes              jsonb [not null, default: `'[]'`]
+  key_points           jsonb [not null]
+  quoted_prices        jsonb [not null]
+  names                jsonb [not null]
+  conditions           jsonb [not null]
+  objections           jsonb [not null]
+  changes              jsonb [not null]
   agreement_candidates jsonb [not null, note: 'UNTRACKED: exists in the database, in no migration, and in no commit on any branch']
   model                text [not null, default: '']
   generated_at         timestamptz [not null, default: `now()`]
@@ -170,8 +269,8 @@ Table call_recap_deliveries {
 Table call_briefs {
   call_sid     text [pk]
   case_id      uuid
-  actions      jsonb [not null, default: `'[]'`]
-  mentions     jsonb [not null, default: `'[]'`]
+  actions      jsonb [not null]
+  mentions     jsonb [not null]
   model        text [not null, default: '']
   generated_at timestamptz [not null, default: `now()`]
 }
@@ -193,7 +292,7 @@ Table operations {
   reference        text [not null, note: 'human-facing folio; doubles as identity level 1 evidence']
   type             text [not null, default: 'drayage']
   status           operation_status [not null, default: 'draft']
-  vertical_payload jsonb [not null, default: `'{}'`, note: 'JSON-schema checked when type = drayage; container_number also passes an ISO 6346 check-digit constraint']
+  vertical_payload jsonb [not null, note: 'JSON-schema checked when type = drayage; container_number also passes an ISO 6346 check-digit constraint']
   created_at       timestamptz [not null, default: `now()`]
 
   Note: 'The shipment. Core columns know no logistics; the vertical lives in a validated payload. Eight tables reference this.'
@@ -213,7 +312,7 @@ Table mandates {
   fx_safety_margin_bps integer [note: 'NULL is not a zero margin: a non-USD proposal with no explicit human-issued margin cannot be authorised at all']
   window_start         timestamptz
   window_end           timestamptz
-  conditions           jsonb [not null, default: `'{}'`]
+  conditions           jsonb [not null]
   status               mandate_status [not null, default: 'active']
   superseded_by        uuid
   authorized_by        uuid [note: 'auth.users. Mandate writes happen only from the dashboard, behind OTP plus a fresh TOTP.']
@@ -352,7 +451,7 @@ Table tool_invocations {
   tenant_id  uuid [not null]
   case_id    uuid
   tool_name  text [not null]
-  arguments  jsonb [not null, default: `'{}'`]
+  arguments  jsonb [not null]
   result     jsonb
   latency_ms integer [note: 'exists to be measured, not claimed. p95 over 200ms means the tool leaves the conversational turn.']
   outcome    tool_outcome [not null]
@@ -370,7 +469,7 @@ Table escalations {
   case_id         uuid
   operation_id    uuid
   reason          text [not null]
-  context_payload jsonb [not null, default: `'{}'`, note: 'enough for a human to take a live call without reading a transcript']
+  context_payload jsonb [not null, note: 'enough for a human to take a live call without reading a transcript']
   target          text
   raised_at       timestamptz [not null, default: `now()`]
   accepted_at     timestamptz
@@ -382,7 +481,7 @@ Table ledger_events {
   operation_id    uuid
   case_id         uuid
   type            text [not null]
-  payload         jsonb [not null, default: `'{}'`]
+  payload         jsonb [not null]
   idempotency_key text [not null, unique, note: 'unique + ON CONFLICT DO NOTHING is atomic, so a redelivered webhook has no read-then-write window']
   created_at      timestamptz [not null, default: `now()`]
 
@@ -397,7 +496,7 @@ Table fx_rate_snapshots {
   provider         text [not null]
   base_currency    char(3) [not null, default: 'USD']
   quote_currency   char(3) [not null]
-  usd_per_unit     "numeric(20,10)" [not null, note: 'the column names its own direction: an inverted rate is a silent 1000x authorisation error']
+  usd_per_unit     numeric(20,10) [not null, note: 'the column names its own direction: an inverted rate is a silent 1000x authorisation error']
   provider_rate_id text
   observed_at      timestamptz [not null]
   fetched_at       timestamptz [not null, default: `now()`]
