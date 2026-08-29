@@ -2692,3 +2692,81 @@ audit redaction, and proof that voice/model/email/admin/recap paths cannot appro
 **Would change if:** a stronger phishing-resistant factor or enterprise dual-control workflow is
 approved. Any reusable approval window, batch authorization, different lifetime, or alternate
 channel requires a new threat-model decision; it cannot inherit mandate-write authority silently.
+
+## D39 / Person 2 D-04N — Explicit commitment mode per operation mandate
+
+**Status:** APPROVED
+
+**Approved by:** Person 2 / human decision owner
+
+**Approved at:** 2026-08-29T16:49-05:00
+
+**Context:** D31/D-04F defines `AUTONOMOUS` and `HUMAN_ESCALATION` but does not say whether
+the selection applies account-wide, inherits from earlier work, or is issued separately for
+each shipment/operation. Inherited autonomous authority can unintentionally govern a later,
+higher-risk operation.
+
+**Alternatives considered:**
+
+- **A — Explicit per-operation mandate choice.** Owner selects one mode while creating each
+  operation mandate; no preselection, account default, or inheritance.
+- **B — Account-wide default.** Convenient but lets an old choice silently grant authority
+  to materially different future operations.
+- **C — Account default with per-operation override.** Flexible but adds precedence and
+  creates risk that an inherited value is overlooked.
+- **D — System/model-selected mode.** Lets probabilistic risk perception determine authority
+  and violates human-issued deterministic authorization.
+
+**Decided:** Alternative A. `commitment_mode` is a required versioned field of the exact
+operation mandate. The owner explicitly selects `AUTONOMOUS` or `HUMAN_ESCALATION` during
+the authenticated dashboard mandate-creation flow. The UI has no selected default; submission
+without an explicit selection fails. A new operation never copies the mode from an account,
+template, previous operation, model suggestion, URL, browser storage, or carrier interaction.
+Changing mode uses D23–D25 and invalidates/re-evaluates every unresolved candidate/operation.
+
+**Why:** A makes delegated authority visible, scoped, and auditable for each economic task.
+It prevents convenience state from silently broadening autonomy and produces a clear
+Trial-by-Fire distinction between otherwise similar operations.
+
+**Trade-off accepted:** the owner must make an additional choice for every operation and
+cannot rely on a reusable default. Repeated configuration adds friction, and choosing
+`AUTONOMOUS` still carries the risk of a policy-valid but undesirable commitment.
+
+**Implementation contract:**
+
+- Domain/schema accepts exactly the enum `AUTONOMOUS | HUMAN_ESCALATION`; null, absent,
+  unknown, legacy, duplicated, case-coerced, or model-invented values fail closed. No
+  application/database default may populate the field.
+- Dashboard presents both modes neutrally with concise consequences and neither control
+  preselected. The owner must actively select one before the canonical mandate diff and
+  D23–D25 fresh-TOTP confirmation.
+- Bind mode to tenant, owner, operation/mandate ID and version, canonical payload digest,
+  actor/session/TOTP evidence, timestamps, and audit history. It is never a mutable call/session flag.
+- Templates may leave the mode explicitly unset but cannot supply an authoritative value.
+  Clone/copy/import operations clear the field and require a new selection.
+- API clients must send an explicit value in the dashboard-authorized canonical payload;
+  server-side policy ignores browser storage, query parameters, hidden fields, model tool
+  arguments, caller/carrier claims, and account metadata as authority.
+- Mode changes create a new immutable mandate version and use fresh TOTP. They invalidate
+  prepared/approved authorization, ranking caches, and pending commitment approvals; every
+  unresolved candidate is evaluated against the new version.
+- A change to `AUTONOMOUS` cannot dispatch an already selected/prepared candidate as a side
+  effect of mandate mutation. After the new version commits, selection and D26 preparation
+  start afresh against current quotes, FX, contacts, quota, and policy.
+- A change to `HUMAN_ESCALATION` immediately prevents autonomous preparation/dispatch and
+  requires a new D38 approval for any future exact commitment. In-flight/unknown attempts
+  remain governed by immutable D28 reconciliation rather than being erased.
+- Audit/UI/API always display the effective per-operation mode and mandate version near
+  selection and commitment state. The model may explain it but cannot recommend or manipulate
+  the control during an authoritative flow unless an approved advisory design is added.
+
+**Verification:** NOT RUN. Required evidence includes missing/null/unknown/case variants,
+no UI/database default, account/template/clone/browser/query/model inheritance attempts,
+each mode's path, owner/non-owner creation/change, fresh TOTP, concurrent/stale mandate
+versions, autonomous-to-human and human-to-autonomous changes, cache/preparation/approval
+invalidation, no dispatch during mutation, unknown in-flight operation preservation, and
+clear audit/display of effective mode.
+
+**Would change if:** enterprise customers require an approved policy template or organization-
+level ceiling on autonomous use. Such inheritance must be restrictive, visibly resolved,
+versioned, and separately approved; no account-level autonomy default is introduced implicitly.

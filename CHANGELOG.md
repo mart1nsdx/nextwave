@@ -37,6 +37,12 @@ DECISION_LOG D8; `policy/` is still the only thing that authorizes anything.
 → Affects: whoever wires `voice/session.py` to a real operation — pass the composed
 prompt and greeting instead of the module-level `SYSTEM_PROMPT` / `GREETING`. Físico:
 `domain/Operation` and `domain/Mandate` should map *into* `CallContext`, not replace it.
+## 2026-08-29T16:49-0500 · mandate/dashboard/policy/security · Person 2/Codex
+Human-approved D39/D-04N: `commitment_mode` is an explicit unselected field on each operation
+mandate; it has no account default, template authority, or inheritance from prior work.
+→ Affects: everyone. Creation/change requires D23–D25; changes version the mandate, invalidate
+  pending authorization, never dispatch immediately, and preserve in-flight unknown evidence.
+
 ## 2026-08-29T16:47-0500 · identity/dashboard/policy/security · Person 2/Codex
 Human-approved D38/D-04M: each `HUMAN_ESCALATION` commitment requires fresh TOTP and a
 two-minute, single-use approval bound to the exact winner, evidence, recipient, and email.
