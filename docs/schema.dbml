@@ -1,0 +1,625 @@
+// =====================================================================
+// Volta — Supabase / Postgres 17.6 — project hizwyjrjvzrdohuxklle
+// Paste into https://dbdiagram.io/d
+//
+// Generated from the LIVE catalogue (pg_constraint, information_schema),
+// not from the migration files. 28 tables, 59 foreign keys.
+//
+// !! FOR VISUALISATION ONLY — DO NOT EXPORT THIS BACK TO SQL !!
+// The Enum blocks below are a dbdiagram convenience. In Postgres these
+// columns are `text` with CHECK constraints, not native enum types.
+// Exporting this DBML to SQL would produce CREATE TYPE ... AS ENUM and
+// a schema that does not match. supabase/migrations/ is the source of truth.
+//
+// Two things this notation cannot express, and they carry the invariants:
+//   1. PARTIAL unique indexes (DBML has no WHERE clause) — see the notes
+//      on offers, mandates, rfqs and commitments.
+//   2. Privilege revocation. Six tables have UPDATE and DELETE revoked
+//      from every role including service_role; they are marked below.
+// =====================================================================
+
+Project volta {
+  database_type: 'PostgreSQL'
+  Note: 'Voice agent that negotiates drayage by telephone. Two hubs: call_cases (what was said) and operations (what is being moved).'
+}
+
+// ------------------------------- enums (CHECK constraints in reality)
+
+Enum call_direction        { inbound outbound }
+Enum call_status           { active ended failed }
+Enum audio_track           { inbound outbound }
+Enum speaker               { caller agent unknown }
+Enum delivery_status       { pending sent failed }
+Enum counterparty_kind     { carrier driver client terminal }
+Enum counterparty_status   { active suspended unknown }
+Enum operation_status      { draft sourcing awarding booked executing closed cancelled }
+Enum mandate_status        { active superseded expired revoked }
+Enum rfq_phase             { open awarding closed }
+Enum offer_status          { proposed superseded withdrawn expired accepted rejected }
+Enum cost_responsibility   { customer carrier shared unknown }
+Enum policy_verdict        { allow deny clarify escalate }
+Enum tool_outcome          { ok timeout error denied }
+Enum document_kind         { rfc sict_permit insurance vehicle_registration driver_license }
+
+Enum commitment_state {
+  VERBAL        [note: 'said on the call, binds nobody']
+  RECAP_SENT    [note: 'written recap dispatched']
+  COMMITTED     [note: 'delivery confirmed, commercially binding']
+  RESOURCED     [note: 'unit and driver assigned']
+  DOCUMENTED    [note: 'Carta Porte stamped, truck may move']
+  EXECUTED      [note: 'gate-out, irreversible in fact']
+  RECAP_FAILED
+  NOT_COMMITTED
+  SUPERSEDED
+}
+
+Enum cost_category {
+  transport fuel tolls port terminal gate handling inspection
+  equipment chassis container storage waiting detention demurrage
+  pickup destination unloading return additional_stop special_cargo
+  permits security insurance customs tax fee reimbursement
+  payment_charge contingency discount other
+}
+
+// ------------------------------- call and audio
+
+Table call_cases {
+  id                 uuid [pk, default: `gen_random_uuid()`]
+  twilio_call_sid    text [not null, unique]
+  provider           text [not null, default: 'twilio']
+  provider_call_id   text [note: 'vendor-neutral pair with provider; unique together']
+  direction          call_direction [not null]
+  status             call_status [not null, default: 'active']
+  clock_reference_at timestamptz [note: 'THE single clock reference. Every offset_ms in the system is milliseconds from here.']
+  from_number        text
+  to_number          text
+  started_at         timestamptz [not null, default: `now()`]
+  ended_at           timestamptz
+  metadata           jsonb [not null, default: `'{}'`]
+  created_at         timestamptz [not null, default: `now()`]
+
+  Note: 'One auditable case per telephone call. Not a booking and not a commitment. Eleven tables reference this.'
+  Indexes {
+    (provider, provider_call_id) [unique]
+    from_number
+  }
+}
+
+Table call_transcript_events {
+  id              uuid [pk, default: `gen_random_uuid()`]
+  case_id         uuid [not null]
+  event_key       text [not null, unique, note: 'idempotency key: a redelivered frame must not create a second row']
+  track           audio_track [not null]
+  speaker         speaker [not null, default: 'unknown']
+  sequence_number bigint [not null]
+  audio_offset_ms integer [not null, note: 'ms since MEDIA STREAM start, not since the recording start']
+  text            text [not null]
+  is_final        boolean [not null, default: false]
+  confidence      real [note: 'Deepgram confidence 0-1. A low-confidence number is a reason to ask, not to extract.']
+  created_at      timestamptz [not null, default: `now()`]
+
+  Note: 'STT evidence. NOTE: documented as append-only but UPDATE and DELETE are still granted - unlike the six tables that have them revoked.'
+  Indexes {
+    (case_id, track, sequence_number) [unique]
+    (case_id, audio_offset_ms)
+  }
+}
+
+Table recordings {
+  id                    uuid [pk, default: `gen_random_uuid()`]
+  case_id               uuid [not null]
+  provider              text [not null, default: 'twilio']
+  provider_recording_id text
+  storage_path          text
+  duration_ms           integer
+  clock_offset_ms       integer [not null, default: 0, note: 'recording start minus call_cases.clock_reference_at. Signed. Playback seeks audio_offset_ms - clock_offset_ms.']
+  created_at            timestamptz [not null, default: `now()`]
+
+  Note: 'EMPTY, and no producer exists: no <Record> is configured anywhere in telephony/.'
+  Indexes {
+    (provider, provider_recording_id) [unique]
+  }
+}
+
+Table participant_segments {
+  id                  uuid [pk, default: `gen_random_uuid()`]
+  case_id             uuid [not null]
+  offset_from_ms      integer [not null]
+  offset_to_ms        integer
+  claimed_identity    text [note: 'what the caller SAID they are. Never trusted.']
+  identity_level      smallint [not null, default: 0, note: '0 number on file, 1 knows a reference, 2 answers a ledger-derived challenge, 3 call-back, 4 biometrics (out of scope)']
+  resolved_contact_id uuid
+  created_at          timestamptz [not null, default: `now()`]
+
+  Note: 'The phone changes hands mid-call. Offers and commitments point HERE, not at the call, so an agreement is not attributed to whoever answered.'
+  Indexes {
+    (case_id, offset_from_ms)
+  }
+}
+
+Table call_recaps {
+  call_sid             text [pk]
+  case_id              uuid
+  summary              text [not null]
+  key_points           jsonb [not null, default: `'[]'`]
+  quoted_prices        jsonb [not null, default: `'[]'`]
+  names                jsonb [not null, default: `'[]'`]
+  conditions           jsonb [not null, default: `'[]'`]
+  objections           jsonb [not null, default: `'[]'`]
+  changes              jsonb [not null, default: `'[]'`]
+  agreement_candidates jsonb [not null, note: 'UNTRACKED: exists in the database, in no migration, and in no commit on any branch']
+  model                text [not null, default: '']
+  generated_at         timestamptz [not null, default: `now()`]
+
+  Note: 'Model-generated summary. Evidence for a later policy check, never a commitment.'
+}
+
+Table call_recap_deliveries {
+  call_sid            text [pk]
+  case_id             uuid
+  status              delivery_status [not null, default: 'pending']
+  to_email            text
+  provider_message_id text
+  error               text
+  sent_at             timestamptz
+  updated_at          timestamptz [not null, default: `now()`]
+
+  Note: 'status = sent is what gates a commitment reaching COMMITTED. failed means RECAP_FAILED / NOT_COMMITTED.'
+}
+
+Table call_briefs {
+  call_sid     text [pk]
+  case_id      uuid
+  actions      jsonb [not null, default: `'[]'`]
+  mentions     jsonb [not null, default: `'[]'`]
+  model        text [not null, default: '']
+  generated_at timestamptz [not null, default: `now()`]
+}
+
+// ------------------------------- authority and agreement
+
+Table tenants {
+  id         uuid [pk, default: `gen_random_uuid()`]
+  name       text [not null]
+  created_at timestamptz [not null, default: `now()`]
+
+  Note: 'One row in practice. The column is trivial now and impossible to retrofit later.'
+}
+
+Table operations {
+  id               uuid [pk, default: `gen_random_uuid()`]
+  tenant_id        uuid [not null]
+  client_id        uuid
+  reference        text [not null, note: 'human-facing folio; doubles as identity level 1 evidence']
+  type             text [not null, default: 'drayage']
+  status           operation_status [not null, default: 'draft']
+  vertical_payload jsonb [not null, default: `'{}'`, note: 'JSON-schema checked when type = drayage; container_number also passes an ISO 6346 check-digit constraint']
+  created_at       timestamptz [not null, default: `now()`]
+
+  Note: 'The shipment. Core columns know no logistics; the vertical lives in a validated payload. Eight tables reference this.'
+  Indexes {
+    (tenant_id, reference) [unique]
+  }
+}
+
+Table mandates {
+  id                   uuid [pk, default: `gen_random_uuid()`]
+  tenant_id            uuid [not null]
+  operation_id         uuid [not null]
+  parent_mandate_id    uuid [note: 'two-level mandates: an intermediary holds a ceiling from the importer and sets a lower one for the carrier']
+  version              integer [not null]
+  cap_amount_minor     bigint [not null, note: 'minor units, never a float']
+  cap_currency         char(3) [not null, default: 'USD']
+  fx_safety_margin_bps integer [note: 'NULL is not a zero margin: a non-USD proposal with no explicit human-issued margin cannot be authorised at all']
+  window_start         timestamptz
+  window_end           timestamptz
+  conditions           jsonb [not null, default: `'{}'`]
+  status               mandate_status [not null, default: 'active']
+  superseded_by        uuid
+  authorized_by        uuid [note: 'auth.users. Mandate writes happen only from the dashboard, behind OTP plus a fresh TOTP.']
+  authorized_at        timestamptz [not null, default: `now()`]
+  expires_at           timestamptz
+  created_at           timestamptz [not null, default: `now()`]
+
+  Note: 'Versioned rows, never updated in place - a decision made ten minutes ago cannot be explained if the cap it was judged against was overwritten.'
+  Indexes {
+    (operation_id, version) [unique]
+    (operation_id) [unique, name: 'mandates_one_active_per_operation_idx', note: 'PARTIAL: where status = active. Keyed on status, not superseded_by, or supersession deadlocks.']
+  }
+}
+
+Table rfqs {
+  id           uuid [pk, default: `gen_random_uuid()`]
+  tenant_id    uuid [not null]
+  operation_id uuid [not null]
+  phase        rfq_phase [not null, default: 'open']
+  opened_at    timestamptz [not null, default: `now()`]
+  closed_at    timestamptz
+  created_at   timestamptz [not null, default: `now()`]
+
+  Note: 'Gathers offers and creates no obligation. AWARDING locks the market so exactly one award can happen inside it.'
+  Indexes {
+    (operation_id) [unique, name: 'rfqs_one_live_per_operation_idx', note: 'PARTIAL: where phase in (open, awarding)']
+  }
+}
+
+Table offers {
+  id                      uuid [pk, default: `gen_random_uuid()`]
+  tenant_id               uuid [not null]
+  rfq_id                  uuid [not null]
+  counterparty_id         uuid [not null]
+  case_id                 uuid
+  participant_segment_id  uuid
+  evidence_offset_ms      integer
+  quoted_currency         char(3) [not null]
+  is_total_final          boolean [not null, default: false, note: 'defaults false so silence blocks: plus tolls or at cost is not a final total']
+  policy_amount_usd_minor bigint [note: 'written by policy/ in Python with Decimal, never by SQL']
+  fx_snapshot_id          uuid
+  mandate_id              uuid
+  pickup_window_start     timestamptz
+  pickup_window_end       timestamptz
+  status                  offer_status [not null, default: 'proposed']
+  superseded_by           uuid
+  created_at              timestamptz [not null, default: `now()`]
+
+  Note: 'A changed offer is a NEW ROW. A conversation contradicts itself; both numbers were said. CHECK: a priced non-USD offer must cite the FX snapshot that priced it.'
+  Indexes {
+    (rfq_id) [unique, name: 'offers_one_accepted_per_rfq_idx', note: 'PARTIAL: where status = accepted. This is invariant #5 - two open bookings is the worst possible failure.']
+    (rfq_id, created_at)
+  }
+}
+
+Table offer_cost_components {
+  id             uuid [pk, default: `gen_random_uuid()`]
+  offer_id       uuid [not null]
+  category       cost_category [not null]
+  amount_minor   bigint [not null, note: 'signed: a discount is negative, preserved as evidence rather than folded into the base rate']
+  currency       char(3) [not null]
+  is_bounded     boolean [not null, default: true, note: 'an unbounded component makes the offer total non-final']
+  is_included    boolean [not null, default: true]
+  responsibility cost_responsibility [not null, default: 'customer']
+  source         text
+  conditions     text
+  created_at     timestamptz [not null, default: `now()`]
+
+  Note: 'The quote decomposed. The cap applies to the aggregate, so a fee cannot escape it by being named separately.'
+}
+
+Table commitments {
+  id                     uuid [pk, default: `gen_random_uuid()`]
+  tenant_id              uuid [not null]
+  operation_id           uuid [not null]
+  offer_id               uuid [not null]
+  participant_segment_id uuid [not null]
+  chain_state            commitment_state [not null, default: 'VERBAL']
+  superseded_by          uuid
+  created_at             timestamptz [not null, default: `now()`]
+
+  Note: 'The last three states arrive hours later, outside the call that created it. A boolean committed would call a booking valid when no truck exists.'
+  Indexes {
+    (operation_id) [unique, name: 'commitments_one_live_per_operation_idx', note: 'PARTIAL: where superseded_by is null and chain_state not in (RECAP_FAILED, NOT_COMMITTED, SUPERSEDED)']
+  }
+}
+
+Table commitment_transitions {
+  id                 uuid [pk, default: `gen_random_uuid()`]
+  commitment_id      uuid [not null]
+  from_state         text
+  to_state           text [not null]
+  reason             text
+  actor              text [not null, default: 'policy']
+  policy_decision_id uuid
+  occurred_at        timestamptz [not null, default: `now()`]
+
+  Note: 'APPEND-ONLY (UPDATE/DELETE revoked). A status column says where a commitment is; this says how it got there and what authorised each step. A TRIGGER here refuses COMMITTED or beyond when no evidence row exists.'
+}
+
+Table evidence {
+  id                  uuid [pk, default: `gen_random_uuid()`]
+  commitment_id       uuid [not null]
+  recording_id        uuid [note: 'nullable only because no recording is produced yet']
+  audio_offset_ms     integer [not null, note: 'NOT NULL: the invariant is written in terms of the offset - no offset means EVIDENCE_MISSING, never verified']
+  transcript_event_id uuid
+  created_at          timestamptz [not null, default: `now()`]
+
+  Note: 'APPEND-ONLY (UPDATE/DELETE revoked). The pointer a dashboard click plays.'
+}
+
+Table policy_decisions {
+  id                 uuid [pk, default: `gen_random_uuid()`]
+  tenant_id          uuid [not null]
+  operation_id       uuid
+  case_id            uuid
+  tool_invocation_id uuid
+  mandate_id         uuid
+  mandate_version    integer [note: 'captured by value as well as by reference, so a decision stays replayable']
+  fx_snapshot_id     uuid
+  identity_level     smallint [note: 'arrives as data. It can require MORE, never grant more than the mandate.']
+  proposal           jsonb [not null]
+  verdict            policy_verdict [not null]
+  reason_code        text [not null]
+  rule_fired         text
+  decided_at         timestamptz [not null, default: `now()`]
+
+  Note: 'APPEND-ONLY (UPDATE/DELETE revoked). Every evaluation INCLUDING denials - they are the only way to show a refusal rather than assert one.'
+  Indexes {
+    (operation_id, decided_at)
+  }
+}
+
+Table tool_invocations {
+  id         uuid [pk, default: `gen_random_uuid()`]
+  tenant_id  uuid [not null]
+  case_id    uuid
+  tool_name  text [not null]
+  arguments  jsonb [not null, default: `'{}'`]
+  result     jsonb
+  latency_ms integer [note: 'exists to be measured, not claimed. p95 over 200ms means the tool leaves the conversational turn.']
+  outcome    tool_outcome [not null]
+  created_at timestamptz [not null, default: `now()`]
+
+  Note: 'APPEND-ONLY (UPDATE/DELETE revoked).'
+  Indexes {
+    (case_id, created_at)
+  }
+}
+
+Table escalations {
+  id              uuid [pk, default: `gen_random_uuid()`]
+  tenant_id       uuid [not null]
+  case_id         uuid
+  operation_id    uuid
+  reason          text [not null]
+  context_payload jsonb [not null, default: `'{}'`, note: 'enough for a human to take a live call without reading a transcript']
+  target          text
+  raised_at       timestamptz [not null, default: `now()`]
+  accepted_at     timestamptz
+}
+
+Table ledger_events {
+  id              uuid [pk, default: `gen_random_uuid()`]
+  tenant_id       uuid [not null]
+  operation_id    uuid
+  case_id         uuid
+  type            text [not null]
+  payload         jsonb [not null, default: `'{}'`]
+  idempotency_key text [not null, unique, note: 'unique + ON CONFLICT DO NOTHING is atomic, so a redelivered webhook has no read-then-write window']
+  created_at      timestamptz [not null, default: `now()`]
+
+  Note: 'APPEND-ONLY (UPDATE/DELETE revoked). Every mutating path touches it, which is why idempotency lives here.'
+  Indexes {
+    (operation_id, created_at)
+  }
+}
+
+Table fx_rate_snapshots {
+  id               uuid [pk, default: `gen_random_uuid()`]
+  provider         text [not null]
+  base_currency    char(3) [not null, default: 'USD']
+  quote_currency   char(3) [not null]
+  usd_per_unit     "numeric(20,10)" [not null, note: 'the column names its own direction: an inverted rate is a silent 1000x authorisation error']
+  provider_rate_id text
+  observed_at      timestamptz [not null]
+  fetched_at       timestamptz [not null, default: `now()`]
+  expires_at       timestamptz [not null]
+  created_at       timestamptz [not null, default: `now()`]
+
+  Note: 'APPEND-ONLY (UPDATE/DELETE revoked). Immutable observation - a policy decision cites the exact snapshot that priced it. Never populated from model output or caller speech.'
+  Indexes {
+    (provider, quote_currency, observed_at) [unique]
+    (quote_currency, observed_at)
+  }
+}
+
+// ------------------------------- drayage vertical and reference
+
+Table operation_clocks {
+  operation_id  uuid [pk]
+  free_days     integer
+  last_free_day date
+  discharged_at timestamptz
+  gate_out_at   timestamptz
+  gate_in_at    timestamptz
+  updated_at    timestamptz [not null, default: `now()`]
+
+  Note: 'Demurrage runs discharge to gate-out; detention runs gate-out to empty return. Ordering is CHECKed. This is the variable that makes everything else urgent.'
+}
+
+Table counterparties {
+  id         uuid [pk, default: `gen_random_uuid()`]
+  tenant_id  uuid [not null]
+  name       text [not null]
+  kind       counterparty_kind [not null]
+  status     counterparty_status [not null, default: 'active']
+  is_on_file boolean [not null, default: false, note: 'a carrier invented mid-call cannot be quoted - onboarding does not happen by phone']
+  created_at timestamptz [not null, default: `now()`]
+}
+
+Table counterparty_contacts {
+  id              uuid [pk, default: `gen_random_uuid()`]
+  counterparty_id uuid [not null]
+  name            text
+  role            text
+  phone           text [not null, note: 'E.164, CHECKed by regex']
+  is_on_record    boolean [not null, default: true]
+  created_at      timestamptz [not null, default: `now()`]
+
+  Note: 'How an inbound call is correlated. Identity level 0 is exactly this number matching a record.'
+  Indexes {
+    (phone) [unique, name: 'counterparty_contacts_phone_on_record_idx', note: 'PARTIAL: where is_on_record']
+    phone
+  }
+}
+
+Table lanes {
+  id          uuid [pk, default: `gen_random_uuid()`]
+  origin      text [not null]
+  destination text [not null]
+  distance_km integer
+  created_at  timestamptz [not null, default: `now()`]
+
+  Indexes {
+    (origin, destination) [unique]
+  }
+}
+
+Table rate_cards {
+  id                      uuid [pk, default: `gen_random_uuid()`]
+  counterparty_id         uuid [not null]
+  lane_id                 uuid [not null]
+  base_amount_minor       bigint [not null]
+  currency                char(3) [not null, default: 'MXN']
+  typical_lead_time_hours integer
+  reliability_bps         integer [note: '0-10000. Turns a promised window into an expected cost: the cheapest freight is often the dearest operation once demurrage is counted.']
+  created_at              timestamptz [not null, default: `now()`]
+
+  Note: 'Mock rates that stay consistent between calls. Carrier personality lives here, or the comparison demonstrates nothing.'
+  Indexes {
+    (counterparty_id, lane_id) [unique]
+  }
+}
+
+Table carrier_documents {
+  id              uuid [pk, default: `gen_random_uuid()`]
+  counterparty_id uuid [not null]
+  kind            document_kind [not null]
+  identifier      text [not null]
+  valid_until     date
+  created_at      timestamptz [not null, default: `now()`]
+
+  Note: 'What is_on_file means. Also the fields a Carta Porte demands.'
+  Indexes {
+    (counterparty_id, kind, identifier) [unique]
+  }
+}
+
+Table appointments {
+  id           uuid [pk, default: `gen_random_uuid()`]
+  operation_id uuid [not null]
+  terminal     text [not null]
+  slot_start   timestamptz [not null]
+  slot_end     timestamptz
+  reference    text
+  created_at   timestamptz [not null, default: `now()`]
+}
+
+// Supabase-managed. Stubbed so the mandates FK resolves; do not create this table.
+Table auth.users {
+  id uuid [pk]
+  Note: 'Supabase Auth. Referenced by mandates.authorized_by.'
+}
+
+// ------------------------------- 59 foreign keys
+
+// call_cases <- 11 tables (13 constraints; the recap/brief/delivery tables
+// carry BOTH the legacy call_sid FK and the newer case_id FK)
+Ref: call_briefs.call_sid            > call_cases.twilio_call_sid
+Ref: call_briefs.case_id             > call_cases.id
+Ref: call_recaps.call_sid            > call_cases.twilio_call_sid
+Ref: call_recaps.case_id             > call_cases.id
+Ref: call_recap_deliveries.call_sid  > call_cases.twilio_call_sid
+Ref: call_recap_deliveries.case_id   > call_cases.id
+Ref: call_transcript_events.case_id  > call_cases.id
+Ref: recordings.case_id              > call_cases.id
+Ref: participant_segments.case_id    > call_cases.id
+Ref: offers.case_id                  > call_cases.id
+Ref: policy_decisions.case_id        > call_cases.id
+Ref: tool_invocations.case_id        > call_cases.id
+Ref: escalations.case_id             > call_cases.id
+Ref: ledger_events.case_id           > call_cases.id
+
+// operations <- 8 tables
+Ref: mandates.operation_id           > operations.id
+Ref: rfqs.operation_id               > operations.id
+Ref: commitments.operation_id        > operations.id
+Ref: policy_decisions.operation_id   > operations.id
+Ref: escalations.operation_id        > operations.id
+Ref: ledger_events.operation_id      > operations.id
+Ref: appointments.operation_id       > operations.id
+Ref: operation_clocks.operation_id   - operations.id   // one-to-one: operation_id IS the primary key
+
+// the agreement spine
+Ref: offers.rfq_id                   > rfqs.id
+Ref: offers.mandate_id               > mandates.id
+Ref: offers.fx_snapshot_id           > fx_rate_snapshots.id
+Ref: offers.counterparty_id          > counterparties.id
+Ref: offers.participant_segment_id   > participant_segments.id
+Ref: offer_cost_components.offer_id  > offers.id
+Ref: commitments.offer_id            > offers.id
+Ref: commitments.participant_segment_id > participant_segments.id
+Ref: commitment_transitions.commitment_id      > commitments.id
+Ref: commitment_transitions.policy_decision_id > policy_decisions.id
+Ref: evidence.commitment_id          > commitments.id
+Ref: evidence.recording_id           > recordings.id
+Ref: evidence.transcript_event_id    > call_transcript_events.id
+
+// authority
+Ref: policy_decisions.mandate_id         > mandates.id
+Ref: policy_decisions.fx_snapshot_id     > fx_rate_snapshots.id
+Ref: policy_decisions.tool_invocation_id > tool_invocations.id
+Ref: mandates.authorized_by              > auth.users.id
+
+// supersession chains (a changed row is a new row)
+Ref: offers.superseded_by            > offers.id
+Ref: commitments.superseded_by       > commitments.id
+Ref: mandates.superseded_by          > mandates.id
+Ref: mandates.parent_mandate_id      > mandates.id
+
+// parties and reference data
+Ref: operations.client_id                       > counterparties.id
+Ref: counterparty_contacts.counterparty_id      > counterparties.id
+Ref: carrier_documents.counterparty_id          > counterparties.id
+Ref: rate_cards.counterparty_id                 > counterparties.id
+Ref: rate_cards.lane_id                         > lanes.id
+Ref: participant_segments.resolved_contact_id   > counterparty_contacts.id
+
+// tenancy (one tenant in practice; the column is impossible to retrofit later)
+Ref: operations.tenant_id        > tenants.id
+Ref: counterparties.tenant_id    > tenants.id
+Ref: mandates.tenant_id          > tenants.id
+Ref: rfqs.tenant_id              > tenants.id
+Ref: offers.tenant_id            > tenants.id
+Ref: commitments.tenant_id       > tenants.id
+Ref: policy_decisions.tenant_id  > tenants.id
+Ref: tool_invocations.tenant_id  > tenants.id
+Ref: escalations.tenant_id       > tenants.id
+Ref: ledger_events.tenant_id     > tenants.id
+
+// ------------------------------- groups
+
+TableGroup "Call and audio" {
+  call_cases
+  call_transcript_events
+  recordings
+  participant_segments
+  call_recaps
+  call_recap_deliveries
+  call_briefs
+}
+
+TableGroup "Authority and agreement" {
+  tenants
+  operations
+  mandates
+  rfqs
+  offers
+  offer_cost_components
+  commitments
+  commitment_transitions
+  evidence
+  policy_decisions
+  tool_invocations
+  escalations
+  ledger_events
+  fx_rate_snapshots
+}
+
+TableGroup "Drayage and reference" {
+  operation_clocks
+  counterparties
+  counterparty_contacts
+  lanes
+  rate_cards
+  carrier_documents
+  appointments
+}
