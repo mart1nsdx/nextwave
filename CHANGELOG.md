@@ -25,6 +25,17 @@ invented timestamps is worse than no log, because the ordering lies silently.
 
 ---
 
+## 2026-08-29T18:51-05 · scripts · Martin/claude
+New `backend/scripts/award_from_recaps.py`: post-processing tool that reads the
+`call_recaps` of one RFQ, normalises each carrier's quote (LLM extraction, never
+inference), scores them with an explainable formula, drafts the confirmation email, and
+— only with `--commit` — writes `offers` + `participant_segments` + a `commitments` row
+at `chain_state='VERBAL'` (+ `commitment_transitions`). It is NOT the live call path and
+never reaches `COMMITTED` (the DB evidence trigger and the real chain still gate that).
+Dry-run by default; refuses to award a carrier whose recap has no confirmed price.
+→ Affects: nobody yet — standalone script, opt-in. Note it writes to the advanced
+  drayage schema (`offers`, `commitments`, …) which lives on `main`, not on this branch.
+
 ## 2026-08-29T17:27-05 · config, repo, supabase · Codex
 Replaced the legacy `SUPABASE_SERVICE_ROLE_KEY` configuration with
 `SUPABASE_SECRET_KEY` for backend-only evidence persistence.
