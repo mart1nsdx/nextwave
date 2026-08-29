@@ -37,6 +37,12 @@ DECISION_LOG D8; `policy/` is still the only thing that authorizes anything.
 → Affects: whoever wires `voice/session.py` to a real operation — pass the composed
 prompt and greeting instead of the module-level `SYSTEM_PROMPT` / `GREETING`. Físico:
 `domain/Operation` and `domain/Mandate` should map *into* `CallContext`, not replace it.
+## 2026-08-29T17:20-0500 · crypto/infra/security · Person 2/Codex
+Human-approved D49/D-14B: use loopback-only OpenBao Transit dev mode as the USD 0 demo key
+provider, only for synthetic/explicit demo data and never for staging or production.
+→ Affects: Person 2/3. Pin the artifact, protect ephemeral tokens, fail closed on restart/key loss,
+  block non-loopback/production use, disclose limitations, and never claim production-grade custody.
+
 ## 2026-08-29T17:18-0500 · crypto/data/security · Person 2/Codex
 Human-approved D48/D-14A: encrypt restricted content with application-level envelope encryption
 behind a replaceable key-provider boundary; demo incremental spend is fixed at USD 0.

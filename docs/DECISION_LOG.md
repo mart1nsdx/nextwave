@@ -3425,3 +3425,85 @@ with demo adapter; and proof the demonstration uses real authenticated encryptio
 envelope encryption and independently controlled keys with verifiable semantics. Any weakening,
 new provider, algorithm, paid tier, recovery path, or scope expansion requires explicit security,
 schedule, operational, and USD cost approval.
+
+## D49 / Person 2 D-14B — Local OpenBao Transit dev server as demo key provider
+
+**Status:** APPROVED
+
+**Approved by:** Person 2 / human decision owner
+
+**Approved at:** 2026-08-29T17:20-05:00
+
+**Context:** D48 requires a USD 0 demo adapter behind Volta's envelope-encryption key-provider
+interface. The adapter should demonstrate an external cryptographic-service boundary without
+creating a paid cloud account or misrepresenting demo key custody as production-grade security.
+
+**Alternatives considered:**
+
+- **A — Local OpenBao Transit in dev mode.** Demonstrates a real Transit API and versioned
+  encryption keys at USD 0 provider charge, but official documentation says dev mode is insecure,
+  in-memory, non-TLS by default, automatically privileged, and never suitable for production.
+- **B — In-process fake KMS.** Easiest and USD 0, but keeps the wrapping key in the application
+  process and demonstrates less separation.
+- **C — Google Cloud KMS Autokey free allowance.** More production-shaped, but requires billing
+  enrollment and can create charges outside qualifying key/operation limits.
+- **D — Proper self-hosted OpenBao.** No software-provider fee on existing hardware and potentially
+  production-capable, but adds TLS, storage, initialization/unseal, backup, policy, and operations
+  work beyond the demo schedule.
+
+**Decided:** Alternative A. The demo/test adapter uses a local loopback-only OpenBao Transit dev
+server to wrap/unwrap D48 DEKs. It is used only with synthetic or explicitly authorized demo data,
+is visibly labeled `DEMO_ONLY`, and is rejected by production/staging configuration. No OpenBao
+installation or implementation is authorized by this documentation decision.
+
+**Evidence checked:** official OpenBao Transit documentation states that Transit performs
+cryptographic operations without storing submitted application data and supports versioned keys.
+Official dev-server documentation warns that dev mode is insecure, in-memory, automatically
+initialized/unsealed, non-TLS on loopback by default, and must never run in production:
+https://openbao.org/docs/secrets/transit/ and
+https://openbao.org/docs/next/concepts/dev-server/ (checked 2026-08-29).
+
+**Why:** A makes the key-provider boundary and failure modes visible in the demo while retaining
+zero provider spend. Its limitations are explicit controls and claims, not hidden assumptions.
+
+**Trade-off accepted:** restart destroys demo key state and can make demo ciphertext permanently
+unreadable. A local process compromise or leaked dev token defeats key separation. Lack of TLS is
+accepted only on loopback for disposable demo/test use; no network-accessible deployment is allowed.
+
+**Cost contract:** incremental provider/subscription/license charge approved under this decision is
+USD 0. Existing-machine CPU, RAM, disk, electricity, download bandwidth, container/runtime storage,
+developer setup/maintenance time, and demo-recovery time remain real non-provider costs. No hosted
+OpenBao, cloud VM, domain/certificate purchase, paid support, paid KMS, billing enrollment, or
+automatic fallback/upgrade is approved.
+
+**Implementation contract:**
+
+- Bind the dev server only to `127.0.0.1`/local process networking; never expose its port through a
+  tunnel, public interface, shared LAN, hosted runner, or demo URL. Network ambiguity fails closed.
+- Use a dedicated disposable Transit mount/key and least-capability application token where dev
+  mode permits. Root/dev tokens, unseal material, and addresses are injected through approved local
+  secret configuration and never committed, printed, captured in screenshots, logged, traced, or
+  sent to a model/transcript.
+- Startup requires an explicit demo/test environment plus an independent `DEMO_ONLY` acknowledgement.
+  Production/staging startup, non-loopback address, persistent customer data, or non-synthetic PII
+  with this adapter fails closed before accepting calls or ciphertext.
+- The application still performs the real D48 envelope format and authenticated encryption using
+  the later-approved algorithm/library; do not replace cryptography with encoding or a fake cipher.
+- Restart/key loss produces explicit `DEMO_KEY_UNAVAILABLE` evidence and no plaintext fallback,
+  silent new-key recovery, or false successful-decryption claim. Demo reset deletes disposable
+  ciphertext and audit fixtures through a controlled test-data procedure.
+- Pin and verify the selected OpenBao version/artifact before installation; document reproducible
+  start/stop/reset steps and current security limitations. Installation remains a separately
+  authorized development action.
+- UI, README, security dossier, and pitch must state that local dev-mode key custody is simulated
+  and unsuitable for production. Production requires a separately approved managed or hardened
+  key service, deployment design, disaster recovery, and complete USD cost review.
+
+**Verification:** NOT RUN. Required evidence includes loopback-only binding; production/staging
+startup rejection; missing acknowledgement; token/log/trace/repository scan; real Transit wrap/
+unwrap; ciphertext/AAD tampering; server unavailable; restart/key loss; accidental new-key creation;
+non-synthetic data rejection; version pinning; controlled cleanup; and no plaintext fallback.
+
+**Would change if:** a verified, guaranteed-zero-charge managed KMS becomes available without
+billing/overage exposure and fits the schedule, or the team approves the costs and operations of a
+production-grade provider. Dev mode can never be promoted merely by changing an environment flag.
