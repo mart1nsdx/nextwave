@@ -3584,3 +3584,331 @@ leg cannot read protected details or cause any operation mutation.
 **Would change if:** carriers adopt a stronger mutually authenticated inbound channel or validated
 operations show callback latency is unacceptable. Any replacement must authenticate channel
 control independently of the order number and receive separate security, cost, and test approval.
+
+## D51 / Person 2 D-11B — Five-minute, one-attempt verified callback challenge
+
+**Status:** APPROVED under the decision owner's blanket approval of recommended architecture
+
+**Approved at:** 2026-08-29T17:29:41-05:00
+
+**Context:** D50 left callback lifetime, retry count, and answered-party proof unresolved.
+
+**Alternatives considered:** A: five minutes, one attempt, and repeat the same order number on the
+callback; B: ten minutes/two attempts; C: fifteen minutes/three attempts; D: unbounded. A minimizes
+replay, nuisance calls, and cost; B/C improve availability at increasing attack/cost surface; D is
+not deterministic or cost-bounded.
+
+**Decided:** A. Create one single-use challenge expiring five minutes after trusted creation time;
+dial the D36 verified number once. After D43 notice, the answering party must independently provide
+the same canonical order number. Do not speak it first. Busy, voicemail, no answer, mismatch,
+ambiguity, forwarding uncertainty, expiry, or provider ambiguity leaves identity unverified and
+escalates. Attempts are atomically claimed before dialing and possibly dispatched calls consume the
+attempt and applicable USD budget. Verification authenticates the carrier channel for this one
+operation/purpose/session only and grants no mandate or commitment authority.
+
+**Verification:** NOT RUN. Test time boundaries, one atomic attempt under concurrency, replay,
+wrong/partial/spoken-first order IDs, voicemail/forwarding, provider timeout, contact-version swap,
+cost accounting, and zero protected disclosure before success.
+
+## D52 / Person 2 D-05A — Immediate revalidation plus opaque one-use execution claim
+
+**Status:** APPROVED under blanket approval
+
+**Approved at:** 2026-08-29T17:29:41-05:00
+
+**Context:** D26 requires a short-lived execution capability but did not choose direct revalidation
+versus a signed bearer artifact.
+
+**Alternatives considered:** A: re-run deterministic policy and atomically claim a server-side
+operation row; B: HMAC bearer token; C: Ed25519 capability; D: reuse the earlier policy decision.
+A has the smallest key/replay surface inside the current single backend; B/C help service separation
+but add cryptographic credentials and bearer replay risk; D permits stale authorization.
+
+**Decided:** A. Immediately before the sole side-effect adapter call, trusted server code re-reads
+and revalidates the exact current mandate/state/evidence, then atomically transitions the prepared
+operation into a one-use claimed state in the authoritative database. The adapter accepts only an
+opaque server-side claim reference over an internal typed call, not a caller/model/browser-visible
+token. No HMAC/Ed25519 authorization token is added for the hackathon. D27 expiry and D28 unknown-
+outcome rules still apply. Database/claim failure denies; it never falls back to the old decision.
+
+**Verification:** NOT RUN. Test stale state between prepare/execute, claim races, duplicate/replay,
+guessed IDs, adapter invocation without a live claim, crash boundaries, and zero second side effect.
+
+## D53 / Person 2 D-04Q — Three proposal-only model tools and no generic connectivity
+
+**Status:** APPROVED under blanket approval
+
+**Approved at:** 2026-08-29T17:29:41-05:00
+
+**Context:** the model-facing capability surface must implement the proposer boundary physically.
+
+**Alternatives considered:** A: three narrow proposal tools; B: one generic action tool; C: direct
+business mutation tools guarded by prompts; D: remote MCP/HTTP/SQL access. A is least-privilege and
+testable; B creates ambiguous unions; C/D create excessive agency and bypass paths.
+
+**Decided:** expose only `propose_terms`, `propose_confirmation_evidence`, and
+`request_escalation`. `propose_terms` covers quote/counteroffer/correction proposals only;
+`propose_confirmation_evidence` is limited to D41's four values; escalation records a typed reason
+and evidence references but cannot choose an approver or alter state. Trusted orchestration injects
+a minimized, immutable `SessionPolicyView`; the model gets no mandate-read tool. Every schema is
+versioned, bounded, rejects unknown fields, normalizes before policy, and produces zero side effects
+on error. No commit/email/telephony/mandate/auth/admin, filesystem, shell, arbitrary HTTP/SQL, remote
+MCP, dynamic tool discovery, or tool-generated credential reaches either model. Tool availability is
+static per session and `parallel_tool_calls` is disabled.
+
+**Verification:** NOT RUN. Enumerate the actual session tool list; fuzz fields/types/sizes/encoding;
+attempt hidden/direct tools and MCP; swap authoritative IDs; run parallel/replay calls; prove every
+model path terminates at proposal/evidence/escalation and cannot reach a side-effect adapter.
+
+## D54 / Person 2 D-09A — One targeted clarification, then deterministic escalation
+
+**Status:** APPROVED under blanket approval
+
+**Approved at:** 2026-08-29T17:29:41-05:00
+
+**Context:** unlimited clarification loops increase cost and let ambiguity drift into guessed terms.
+
+**Alternatives considered:** A: one targeted clarification for each material ambiguity, maximum two
+clarification turns per proposal version; B: model decides when to stop; C: immediate escalation for
+all ambiguity; D: fixed three retries. A preserves recoverable calls with deterministic bounds; B is
+unbounded/probabilistic; C over-escalates; D repeats questions without considering material fields.
+
+**Decided:** A. `CLARIFY` is allowed only for a specifically identified, recoverable missing or
+ambiguous material field. Ask a fixed, non-leading question, once for that ambiguity and at most two
+clarification turns across the proposal version. A correction creates a new version but does not
+reset a call-level maximum of four total clarification turns. Repeated ambiguity, contradiction,
+identity/authority conflict, unsupported condition, policy/provider uncertainty, or exhausted limit
+becomes `ESCALATE`; explicit hard violations become `DENY`; neither can be conversationally bargained
+into `ALLOW`. D41's stricter one-confirmation clarification remains controlling.
+
+**Verification:** NOT RUN. Test every outcome boundary, per-field/version/call counters, correction
+loops, multilingual/noisy answers, contradictions, technical failure, and unchanged side-effect count.
+
+## D55 / Person 2 D-10A — Neutral injection handling with repeat-attack escalation
+
+**Status:** APPROVED under blanket approval
+
+**Approved at:** 2026-08-29T17:29:41-05:00
+
+**Context:** injection can change model behavior even though D1 prevents it from changing authority.
+
+**Alternatives considered:** A: ignore role/meta-instructions, continue safe business processing,
+then escalate repeated attacks; B: argue/refuse at length; C: end on the first suspicious phrase;
+D: use a classifier as authorization. A minimizes disclosure and denial-of-service; B leaks behavior;
+C is easy to weaponize; D makes a probabilistic detector authoritative.
+
+**Decided:** treat all caller/retrieved/model text as data. Never reveal or paraphrase hidden prompts,
+tools, credentials, policy internals, or detection rules. Process independently valid business terms
+through D53 while ignoring claimed roles/overrides. Give at most one neutral reminder that Volta can
+operate only under the current mandate. A second material injection attempt in the call, or any
+attempt to obtain secrets/privileged execution, triggers reason-coded escalation/end without a side
+effect. Detection is telemetry only; missing a detection cannot expand authority. Logs omit attack
+bodies and retain only bounded category/reason/evidence references.
+
+**Verification:** NOT RUN. Run direct/indirect, multilingual, padded, encoded, fake-tool/JSON,
+system-role, secret-exfiltration, and mixed valid-term attacks; metamorphically prove policy invariance.
+
+## D56 / Person 2 D-14C — AES-256-GCM per-artifact envelopes and 90-day KEK rotation
+
+**Status:** APPROVED under blanket approval
+
+**Approved at:** 2026-08-29T17:29:41-05:00
+
+**Context:** D48/D49 selected envelope encryption but left algorithm, scope, nonce, and rotation open.
+
+**Alternatives considered:** A: AES-256-GCM with a fresh DEK per restricted artifact and 90-day KEK
+rotation; B: one tenant DEK; C: ChaCha20-Poly1305; D: custom/deterministic encryption. A has broad
+reviewed-library/provider support and smallest compromise scope; B enlarges blast radius; C is sound
+but adds no demonstrated platform benefit; D risks nonce/plaintext-confirmation failures.
+
+**Decided:** use a vetted library's AES-256-GCM with a cryptographically random 256-bit DEK and
+96-bit nonce per restricted artifact; nonce reuse under a DEK is forbidden. Bind D48 AAD exactly and
+store its canonical version. OpenBao Transit wraps DEKs under a versioned AES-256-GCM KEK; use
+separate keys per environment and opaque tenant-derived context where supported. Production KEKs
+rotate at least every 90 days and immediately after suspected compromise; demo keys are disposable
+per run. New writes use the newest version; old wrapped DEKs are rewrapped asynchronously, while key
+versions remain decryptable until every dependent artifact and D46 backup remnant expires. Key
+destruction requires dependency proof and two-person production approval. No plaintext search index.
+
+**Verification:** NOT RUN. Known-answer/library round trips, random nonce/DEK uniqueness, tampering,
+AAD/ciphertext/key swaps, rotation/rewrap races, old-version retirement, loss/recovery, and leak scans.
+
+## D57 / Person 2 D-15A — Local allowlisted observability; vendor tracing disabled
+
+**Status:** APPROVED under blanket approval
+
+**Approved at:** 2026-08-29T17:29:41-05:00
+
+**Context:** traces help debugging but can replicate transcripts, PII, prompts, tool arguments, and
+secrets into additional systems with different retention.
+
+**Alternatives considered:** A: local structured metadata only, OpenAI tracing off, no Langfuse;
+B: OpenAI Traces; C: self-hosted Langfuse; D: hosted Langfuse/full payloads. A minimizes vendors,
+cost, and leakage; B/C add value but another sensitive copy; D is incompatible with minimization.
+
+**Decided:** set Realtime `tracing` to null and add no Langfuse. Emit server-side allowlisted events
+containing opaque tenant/call/operation/proposal IDs, versions, state transition, policy outcome/reason,
+latencies, retry/idempotency counters, token/audio usage, provider result class, and USD cost—never
+speech/transcript bodies, email/phone bodies, prompts, tool raw arguments, secrets, auth material, or
+encryption plaintext. Operational events expire after 30 days; security/authorization audit metadata
+needed to explain a commitment is retained one year, separate from transcript bodies. Aggregated
+non-identifying cost/reliability metrics may remain one year. OpenAI's default API abuse-monitoring
+retention (currently documented as up to 30 days) is an external processor fact, not Volta tracing or
+zero retention; ZDR eligibility is not assumed.
+
+**Verification:** NOT RUN. Schema allowlist/property tests, canary secrets/PII, error/exception paths,
+provider payloads, trace-off config, 30-day/one-year deletion, access controls, and manual log review.
+
+## D58 / Person 2 D-16A — Cost-controlled GPT-Realtime-2.1 baseline
+
+**Status:** APPROVED under blanket approval
+
+**Approved at:** 2026-08-29T17:29:41-05:00
+
+**Context:** model/version/reasoning settings affect speech quality, latency, cost, and tool behavior.
+
+**Alternatives considered:** A: GPT-Realtime-2.1 for bounded integration/demo calls and model-free
+deterministic development; B: use 2.1 for every test; C: use 2.1 Mini everywhere; D: floating legacy
+model. A tests the final behavior without uncontrolled spend; B wastes paid audio; C may reduce demo
+quality; D creates drift/deprecation risk.
+
+**Decided:** configure exact model ID `gpt-realtime-2.1`, reasoning effort `low`, audio output, static
+D53 tools, `tool_choice=auto`, `parallel_tool_calls=false`, vendor tracing off, and a bounded output-
+token limit initially 512. Treat lack of Structured Outputs as authoritative: strict server schemas
+remain mandatory. Deterministic DUT-S and fixture replays make no API call; only explicitly budgeted
+integration, Trial-by-Fire, and final demo runs use 2.1. Current official listed prices checked
+2026-08-29 are USD 4/M text input, USD 24/M text output, USD 32/M audio input, and USD 64/M audio
+output tokens; usage and cached-input semantics must be measured from provider evidence. No auto-
+upgrade, fallback model, reasoning increase, or spend/credit purchase. Version/config changes require
+the regression suite and manual live-call inspection.
+
+**Verification:** NOT RUN. Verify session-created configuration, actual tool list, no structured-output
+assumption, cost counters, max-output behavior, interruption/silence/alphanumeric cases, and no fallback.
+
+## D59 / Person 2 D-17A — Deterministic suite plus local Promptfoo red team
+
+**Status:** APPROVED under blanket approval
+
+**Approved at:** 2026-08-29T17:29:41-05:00
+
+**Context:** security evidence needs both exact authorization oracles and adversarial conversation tests.
+
+**Alternatives considered:** A: pytest/Hypothesis/state-machine tests plus pinned local Promptfoo;
+B: manual attacks only; C: Promptfoo only; D: add garak and PyRIT now. A balances breadth and schedule;
+B is irreproducible; C cannot prove deterministic invariants; D expands setup/supply-chain scope.
+
+**Decided:** DUT-S uses pytest, Hypothesis, metamorphic and stateful tests as the release authority.
+DUT-C uses a pinned, locally executed Promptfoo configuration against mocks first and a separately
+budgeted small 2.1 run; disable hosted sharing/telemetry and store only sanitized fixtures/results.
+Garak/PyRIT are deferred unless all critical gates are green before H12 and installation is separately
+reviewed. Dependency hashes/locks and licenses must be recorded; no package installation occurs in
+this architecture session. A stochastic pass can never override a deterministic failure.
+
+**Verification:** NOT RUN. Pin/install review, offline mock run, hostile corpus coverage, sanitized
+artifacts, deterministic reproducibility, bounded paid cases, and manual inspection of every side effect.
+
+## D60 / Person 2 D-18A — Evidence-based milestone and release gates
+
+**Status:** APPROVED under blanket approval
+
+**Approved at:** 2026-08-29T17:29:41-05:00
+
+**Context:** “looks good” and invented percentages cannot determine whether a security-critical demo ships.
+
+**Alternatives considered:** A: exact invariant gates plus observed evidence; B: aggregate pass rate;
+C: manual judgment; D: ship with known critical failures. A makes failures actionable; B can hide one
+catastrophic case; C is inconsistent; D violates the safety claim.
+
+**Decided:** preserve H4/H7/H10/H14/H20/H21 gates from the Person 2 plan. Every critical deterministic
+test must pass; required integration/live tests must be actually run; no known P0/P1 may remain at
+scope freeze or submission. P0 includes authorization/mandate bypass, duplicate commitment, secret
+exposure, cross-tenant restricted-data access, or false committed state. P1 includes exploitable
+identity bypass, stale authorization, material PII leakage, unbounded spend/side effects, or failure
+to fail closed. P0/P1 cannot be “accepted”; reduce scope or block release. Unrun evidence is `NOT RUN`,
+flaky is failure, and a model success percentage is supplemental only. Manual/visual/live-phone review
+is mandatory when tools, policy/mutation, crypto, tracing, model configuration, state machine, or P0/P1
+fixes change and at clean-room submission review.
+
+**Verification:** NOT RUN. The gate itself is verified by CI required checks, immutable run manifests,
+failure injection, fresh-clone rehearsal, and signed-off manual checklists with no fabricated results.
+
+## D61 / Person 2 D-19A — PR-only governance with secret and dependency gates
+
+**Status:** APPROVED under blanket approval
+
+**Approved at:** 2026-08-29T17:29:41-05:00
+
+**Context:** the public repository and four parallel developers create merge, credential, and supply-
+chain risk. Current partner branches are intentionally not merged into this Person 2 branch.
+
+**Alternatives considered:** A: protected main, PRs, scoped ownership/checks, secret scanning; B:
+trusted direct pushes; C: one shared branch; D: long-lived isolated branches. A gives review/evidence;
+B/C bypass controls; D creates late conflict and stale security assumptions.
+
+**Decided:** no direct or force push to main; all changes use scoped branches/PRs. Require green lint,
+types, tests, layering, secret scan, dependency review where available, and current changelog/decision
+log for shared contracts. Require Person 2 review for `policy/`, `tools/`, auth/identity, commitment
+adapters, security migrations/config, and security docs; repository owner retains merge authority.
+Enable GitHub secret scanning/push protection and protected-branch required checks if available at no
+unapproved cost; otherwise run a pinned local/CI secret scanner and document the platform gap. Never
+bypass a real secret: revoke/rotate first, remove it safely, investigate exposure, and add regression.
+Use GitHub CLI/OS credential storage, built-in least-privilege `GITHUB_TOKEN`, pinned actions/dependencies,
+lockfiles, and minimal workflow permissions. No merge is authorized by this ADR.
+
+**Verification:** NOT RUN. Inspect branch settings/permissions, required checks/CODEOWNERS, deliberate
+fake-secret block, workflow permissions/pins, dependency lock integrity, PR review, and clean clone.
+
+## D62 / Person 2 D-00A — Predevelopment remains documentation-only until official rules are verified
+
+**Status:** APPROVED under blanket approval
+
+**Approved at:** 2026-08-29T17:29:41-05:00
+
+**Context:** the supplied PDFs are exports of prior analysis/chat, not authoritative organizer terms.
+They describe the challenge but do not establish binding pre-event coding, eligibility, reuse, credit,
+or submission rules.
+
+**Alternatives considered:** A: continue architecture/docs but block product implementation until
+official rules are obtained; B: assume prebuilding is allowed; C: stop all documentation; D: hide
+predevelopment. A preserves progress and integrity; B risks disqualification; C is unnecessary;
+D is deceptive.
+
+**Decided:** this session and branch remain documentation/read-only architecture work. Before product
+code, dependency installation, live service configuration, or reuse of prior implementation, obtain
+and archive/link current official organizer rules and record: start-time/prebuild allowance, permitted
+assets/open source/AI, team/ownership, required disclosures, judging/submission, data/call consent,
+sponsor credits, and public-repo requirements. Ambiguity is escalated to organizers in writing. Keep
+authorship/provenance and disclose prior scaffolds. No retrospective claim that the supplied chat PDFs
+are official rules. If rules prohibit this work, quarantine it and rebuild only what is permitted.
+
+**Verification:** supplied PDFs inspected; official rule evidence **NOT AVAILABLE**. Development gate
+remains BLOCKED until a human records the official source and resolution.
+
+## D63 / Person 2 D-20A — Narrow, evidence-qualified final security claims
+
+**Status:** APPROVED under blanket approval
+
+**Approved at:** 2026-08-29T17:29:41-05:00
+
+**Context:** the jury must understand what architecture and observed tests prove without interpreting
+a design, model guardrail, or simulated component as a production guarantee.
+
+**Alternatives considered:** A: narrow claims tied to run evidence and explicit limitations; B:
+absolute “secure/prompt-injection-proof/compliant” claims; C: avoid security claims; D: quote only test
+pass percentages. A is truthful and differentiating; B is false; C hides the product's core; D omits
+coverage and residual risk.
+
+**Decided:** claim only that Volta *architecturally separates* probabilistic proposals from a
+deterministic reference monitor, and—only after observed evidence—that tested forbidden proposals
+produced zero consequential side effects in the enumerated suite. State that prompt injection can
+still alter conversation, transcripts are probabilistic, callback proves control of a registered
+channel rather than a natural person's identity, email commitment/legal enforceability depends on
+external contracts/law, notice-only transcription needs jurisdictional review, OpenAI may retain API
+content under applicable data controls, OpenBao dev mode is simulated/non-production, provider and
+network failures remain, and payment is outside scope. Never claim “hack-proof,” “zero risk,” “legal
+compliance,” “zero retention,” “zero cost,” “perfect transcription,” or “all tests passed” without the
+corresponding verified evidence. Demo labels distinguish SIMULATED, LIVE, NOT RUN, UNKNOWN, and
+COMMITTED; manual/live-phone inspection and residual risks appear in the dossier.
+
+**Verification:** NOT RUN. Final claim review compares every slide/README/demo label to immutable test,
+provider, cost, and manual evidence; unsupported language blocks submission until removed or proven.

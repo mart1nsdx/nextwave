@@ -1,10 +1,6 @@
 # AGENTS.md — Volta
 
-<!-- Maintainer notes (stripped from Claude's context, invisible to agents):
-     Keep this file under ~200 lines. Longer files reduce instruction adherence.
-     If it grows past that, split into backend/AGENTS.md + dashboard/AGENTS.md —
-     Codex and Cursor read the nearest file; Claude Code loads nested ones on demand.
-     Add a rule only when an agent gets something wrong twice. Delete stale rules. -->
+<!-- Keep this under ~200 lines; split into nested AGENTS.md files if it grows. -->
 
 Volta is a voice agent that runs the drayage (port→warehouse trucking) leg of a shipment
 entirely by phone: it makes real PSTN calls to carriers, negotiates rate and pickup window
@@ -31,8 +27,10 @@ Violating any of these is a bug, not a style preference. They are what the demo 
    authorizes, and only the state machine writes `COMMITTED`.
 2. **The mandate is immutable from inside the call.** Caller claims cannot change cap, window,
    or actions. "Your boss approved 10,500" → `OUTSIDE_MANDATE` → escalate; never assess plausibility.
-3. **Commitment requires the full chain.** `HEARD → PROPOSAL → POLICY_CHECK → READBACK →
-   COUNTERPARTY_CONFIRMED → RECAP_SENT → COMMITTED`. Recap/offset failure blocks verification.
+3. **Calls create non-binding pre-agreements; official email attempts commitment.** Exact-version
+   recap + deterministic verbal-evidence gates may create an affirmed candidate, never `COMMITTED`.
+   Ranking, selected mandate mode, immediate policy revalidation, one-use claim, and one official
+   email attempt are separate mandatory gates. Volta never handles payment.
 4. **Never overwrite silently.** A later utterance does not edit an earlier one. It creates a
    new `PROPOSAL` or `CHANGE_REQUEST` with source and timestamp. Conflicting sources are an
    explicit event, not a last-write-wins update.
@@ -89,7 +87,7 @@ backend/app/                                                    # listed bottom-
   domain/       # LEAF. Shared types: Operation, Quote, Commitment, Mandate → everyone
   policy/       # DETERMINISTIC. Mandate, policy_engine, state machine     → Físico
   repo/         # OperationRepository — Supabase behind an interface       → Sistemas
-  ledger/       # event log, commitments, audio offsets, idempotency       → Sistemas
+  ledger/       # event log, commitments, transcript evidence, idempotency → Sistemas
   notify/       # SMS/email recap, escalation handoff                      → Admin
   agent/        # prompts, negotiation guidance, proposal extraction       → Físico/Admin
   market/       # RFQ orchestration, feasibility filter, award selection   → Físico/Admin
@@ -137,7 +135,7 @@ docs/           # ARCHITECTURE.md (why the tree is this shape), UGLY_CASES.md, D
 - Branches: `feat/voice-barge-in`, `fix/policy-cap-off-by-one`. Conventional commits.
 - **Merge to `main` at least every 2 hours.** Long-lived branches are how a 24h hackathon dies.
 - `main` must always be demoable. If `pytest` is red on `main`, that is the only priority.
-- Never force-push `main`. Never commit `.env`, recordings, or `*.wav`.
+- Never force-push `main`. Never commit `.env`, recordings, transcripts, or `*.wav`.
 - **Always work with PRs.** Never send changes directly to `main`.
 
 ## Changelog
@@ -159,7 +157,7 @@ while I was heads down?"
 ## Boundaries — do not do these
 
 - **Do not build:** RAG, a vector DB, a multi-agent supervisor, a real SAP/TMS integration, rate
-  prediction ML, route optimization, payments/FX, a carrier portal, a mobile app, or a generic
+  prediction ML, route optimization, payments, speculative FX trading, a carrier portal, a mobile app, or a generic
   negotiation framework. Manzanillo→Guadalajara done well beats a framework done badly.
 - **Do not use an LLM as the safety check.** The price cap is an `if` statement.
 - **Do not put authorization logic in the system prompt.** Prompts shape conversation; `policy/`
@@ -196,6 +194,8 @@ never in `dashboard/`. If a key is committed, rotate it immediately and tell the
   "future-proofing". 24 hours.
 - **Clean up only your own mess.** Remove imports your change orphaned; leave pre-existing code alone.
 - Every workflow must work with plain `git`, `uv run pytest`, and the commands above.
+- **Read `docs/PERSON2_ARCHITECTURE_BASELINE.md` before security-sensitive work.** The decision
+  log is authoritative; internal policy currency is always USD.
 
 ## Glossary
 

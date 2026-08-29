@@ -37,6 +37,13 @@ DECISION_LOG D8; `policy/` is still the only thing that authorizes anything.
 → Affects: whoever wires `voice/session.py` to a real operation — pass the composed
 prompt and greeting instead of the module-level `SYSTEM_PROMPT` / `GREETING`. Físico:
 `domain/Operation` and `domain/Mandate` should map *into* `CallContext`, not replace it.
+## 2026-08-29T17:29-0500 · architecture/policy/security · Person 2/Codex
+Human blanket-approved recommended D51-D63 and the Person 2 architecture baseline: callback bounds,
+one-use revalidation, exact tools, escalation/injection, crypto, observability/model, red team,
+release/repo gates, competition-rule block, final claims, and the H0-H24 delivery schedule.
+→ Affects: everyone. Read `docs/PERSON2_ARCHITECTURE_BASELINE.md`; implementation remains blocked
+  pending official competition rules, and every listed verification remains NOT RUN.
+
 ## 2026-08-29T17:22-0500 · voice/identity/policy/security · Person 2/Codex
 Human-approved D50/D-11A: an inbound order number is lookup evidence only; protected processing
 requires a new outbound call to the carrier number in the verified directory.
