@@ -37,6 +37,12 @@ DECISION_LOG D8; `policy/` is still the only thing that authorizes anything.
 → Affects: whoever wires `voice/session.py` to a real operation — pass the composed
 prompt and greeting instead of the module-level `SYSTEM_PROMPT` / `GREETING`. Físico:
 `domain/Operation` and `domain/Mandate` should map *into* `CallContext`, not replace it.
+## 2026-08-29T17:12-0500 · data/storage/security · Person 2/Codex
+Human-approved D46/D-13E: expired transcripts become inaccessible and leave every active system
+within 24 hours; backup remnants must expire within 30 additional days.
+→ Affects: Person 2/3/4. Inventory every copy, apply deletion tombstones before restored data is
+  queryable, prohibit resurrection, monitor both deadlines, and treat overruns as control failures.
+
 ## 2026-08-29T17:11-0500 · identity/data/security · Person 2/Codex
 Human-approved D45/D-13D: fresh TOTP opens a fixed, non-renewable five-minute transcript-viewing
 session bound to the same actor, tenant, authenticated browser session, and audit purpose.

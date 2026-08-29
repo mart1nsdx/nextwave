@@ -3194,3 +3194,71 @@ per-request role and ownership checks; and proof the window cannot enable export
 **Would change if:** usability testing shows five minutes prevents legitimate audit work and a
 longer interval passes equivalent threat review. Any change requires explicit approval and must
 retain fixed expiry, same-session binding, revocation, per-request authorization, and auditability.
+
+## D46 / Person 2 D-13E — Active deletion within 24 hours and backup purge within 30 days
+
+**Status:** APPROVED
+
+**Approved by:** Person 2 / human decision owner
+
+**Approved at:** 2026-08-29T17:12-05:00
+
+**Context:** D42 sets a one-year transcript retention period, but deletion from the primary table
+alone would leave searchable indexes, caches, exports, replicas, traces, or backups containing
+usable copies. The expiry contract needs bounded, testable deletion across the full data lifecycle.
+
+**Alternatives considered:**
+
+- **A — Active deletion within 24 hours plus backup purge within 30 additional days.** Provides a
+  practical operational window and a finite maximum for residual backup copies.
+- **B — Backup purge within seven days.** Minimizes residual retention but may require expensive
+  or unsupported backup granularity and could weaken disaster recovery.
+- **C — Backup purge within ninety days.** Easier for many backup regimes but materially extends
+  sensitive-data exposure beyond the intended retention period.
+- **D — Delete active storage only.** Simplest implementation but permits indefinite, unaudited
+  copies and reappearance after restoration.
+
+**Decided:** Alternative A. No later than 24 hours after the D42 one-year expiry, the transcript
+must be inaccessible and removed from every active system. Any residual copy in immutable or
+rotating backups must be purged or irreversibly expire no later than 30 additional calendar days.
+An authoritative deletion tombstone prevents backup restoration from making expired content
+active or readable during that residual period.
+
+**Why:** A creates deterministic service-level boundaries for both ordinary deletion and disaster-
+recovery media. Tombstones make restoration safe without pretending an immutable backup can
+always delete an individual object immediately.
+
+**Trade-off accepted:** a deleted transcript may physically remain encrypted in restricted backup
+media for up to 30 days after active deletion, but it cannot be used or restored into service.
+Providers unable to meet the deadline cannot hold transcript backups in the approved architecture.
+
+**Implementation contract:**
+
+- Calculate D42 expiry using authoritative call-end time, then enqueue deletion independently of
+  model behavior or user traffic. Complete active deletion by expiry plus 24 hours.
+- Active scope includes primary/replica rows, object storage, search/vector indexes, caches,
+  temporary files, analytics/observability payloads, generated previews, and any approved exports.
+  References required for audit may retain a non-content tombstone, never transcript text.
+- Persist an integrity-protected tombstone keyed by opaque transcript identity with expiry,
+  deletion initiation/completion, scope/version, reason, and backup purge deadline. It contains no
+  transcript content or directly identifying speech.
+- Every backup restore must apply current tombstones before restored data becomes queryable. An
+  expired transcript discovered during restore is deleted/quarantined without model or operator
+  access; restore does not restart retention.
+- Inventory every storage copy and provider before implementation. Contractual/provider deletion
+  guarantees must support the 30-day bound; absence of evidence fails closed for transcript use.
+- Monitor deletion lag. At 24 hours, any active remnant is a security incident and remains access-
+  denied; at 30 additional days, any backup remnant is a provider/control failure requiring
+  escalation. Jobs may retry deletion but never extend either deadline silently.
+- Legal holds are not implicitly authorized. A future hold requires a separate scoped decision,
+  legal authority, access restrictions, expiry/review, and an auditable release process.
+
+**Verification:** NOT RUN. Required evidence includes just-before/at/after one-year expiry;
+completion before 24 hours; every enumerated active copy; cache/index invalidation; failed/retried
+jobs; tombstone integrity; restore before and after expiry; no resurrection; backup purge by day
+30; provider evidence; leap-day/calendar boundaries; cross-tenant isolation; and alert/escalation
+without content leakage.
+
+**Would change if:** verified infrastructure cannot meet the deadline or applicable obligations
+require a shorter period. A longer period is not an implementation convenience: it requires new
+explicit risk, provider, contractual, privacy, schedule, and USD cost approval.
