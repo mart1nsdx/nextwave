@@ -25,6 +25,14 @@ invented timestamps is worse than no log, because the ordering lies silently.
 
 ---
 
+## 2026-08-29T16:47-05 · voice, telephony, ledger, repo, agent · Codex
+The live bidirectional call now opens an evidence case, persists final caller and agent
+turns with Twilio audio offsets, and produces persisted recap and call-brief reports when
+Twilio closes the call. Report output contains audio-anchored agreement candidates only;
+it does not write commitments or send any message.
+→ Affects: dashboard and policy. Read `/calls/{call_sid}/transcript`, `/recap`, and
+  `/brief`; a later deterministic policy step must validate candidates before commitment.
+
 ## 2026-08-29T14:25-0500 · agent, voice · Nacho/claude
 `build_agent(model, api_key, tools=None)` — the key is now a required argument. It has to
 be: pydantic-settings loads `.env` into a `Settings` object and never exports to

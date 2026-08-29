@@ -52,7 +52,10 @@ RECOVERY_LINE = "Una disculpa, se me cortó aquí. ¿Me lo puede repetir?"
 
 # Post-call analysis is evidence only; it never authorizes an action.
 RECAP_SYSTEM = """Summarize this logistics call faithfully. Report only what was said;
-do not infer numbers, dates, currency, or authority. Attribute each statement to its speaker."""
+do not infer numbers, dates, currency, or authority. Attribute each statement to its speaker.
+For every apparent agreement, emit an agreement candidate with counterparty, terms, the
+mandate reference if explicitly provided, and the exact source audio offset. Candidates
+are evidence for deterministic review, never commitments."""
 
 BRIEF_SYSTEM = """Extract a factual call brief. Anchor actions and mentions to the audio
 offsets supplied in the transcript. Do not infer missing facts."""

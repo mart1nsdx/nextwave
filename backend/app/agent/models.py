@@ -14,7 +14,14 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from app.agent.prompts import BRIEF_SYSTEM, RECAP_SYSTEM, RECAP_USER_TEMPLATE
-from app.domain.models import BriefAction, BriefMention, CallBrief, Recap, RecapContext
+from app.domain.models import (
+    AgreementCandidate,
+    BriefAction,
+    BriefMention,
+    CallBrief,
+    Recap,
+    RecapContext,
+)
 
 
 class _RecapDraft(BaseModel):
@@ -27,6 +34,7 @@ class _RecapDraft(BaseModel):
     conditions: list[str] = Field(default_factory=list)
     objections: list[str] = Field(default_factory=list)
     changes: list[str] = Field(default_factory=list)
+    agreement_candidates: list[AgreementCandidate] = Field(default_factory=list)
 
 
 class _BriefDraft(BaseModel):

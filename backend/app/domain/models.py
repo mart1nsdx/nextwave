@@ -91,8 +91,23 @@ class Recap(BaseModel):
     conditions: list[str] = Field(default_factory=list)
     objections: list[str] = Field(default_factory=list)
     changes: list[str] = Field(default_factory=list)
+    agreement_candidates: list[AgreementCandidate] = Field(default_factory=list)
     model: str = ""
     generated_at: datetime | None = None
+
+
+class AgreementCandidate(BaseModel):
+    """What the call appears to have agreed, anchored for deterministic policy review.
+
+    This is deliberately not a Commitment. It is model-produced evidence which policy
+    must validate against the mandate and the recap-delivery gate before anything can
+    reach operation state.
+    """
+
+    counterparty: str | None = None
+    terms: str
+    mandate_reference: str | None = None
+    audio_offset_ms: int = Field(ge=0)
 
 
 class RecapDeliveryStatus(StrEnum):
