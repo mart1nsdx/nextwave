@@ -2931,3 +2931,68 @@ affirmed pre-agreement cannot directly invoke commitment or email dispatch.
 **Would change if:** validated call testing shows natural confirmation cannot meet acceptable
 false-accept and false-reject bounds. Any replacement must retain exact-term/version binding and
 deterministic server-side acceptance; convenience alone cannot move authority into a model.
+
+## D42 / Person 2 D-13A — Transcript-only evidence retained for one year
+
+**Status:** APPROVED
+
+**Approved by:** Person 2 / human decision owner
+
+**Approved at:** 2026-08-29T16:59-05:00
+
+**Context:** Volta's current call architecture produces a transcription but does not capture or
+retain call audio. D41 requires auditable confirmation evidence, and the decision owner requires
+the available transcript to remain reviewable for audit purposes for one year.
+
+**Alternatives considered:**
+
+- **A — Transcript and audit evidence for 30 days.** Reduces exposure but does not meet the
+  requested audit period.
+- **B — Transcript-only evidence for one year.** Preserves the evidence Volta actually has while
+  avoiding a new raw-audio collection path.
+- **C — Audio and transcript for one year.** Provides stronger replay evidence but contradicts
+  the current no-audio architecture and materially increases privacy, storage, and access risk.
+- **D — Customer-configurable retention.** Flexible but creates multiple deletion regimes and
+  considerably more policy and verification work.
+
+**Decided:** Alternative B, with an explicit architectural prohibition on audio capture or
+storage. Retain each call transcript and its directly linked structured audit metadata for one
+year from the end of the call, solely for audit and authorized investigation. This is not
+Alternative C because no audio exists in the approved data flow.
+
+**Why:** B supplies the exact evidence available for D41 and later dispute review without
+expanding collection to a more sensitive modality. A fixed period also permits deterministic
+retention and deletion tests.
+
+**Trade-off accepted:** reviewers cannot replay the original audio or independently resolve ASR
+errors. A transcript must therefore never be represented as a recording or perfect ground truth;
+uncertain/conflicting transcription evidence continues to fail closed under D41.
+
+**Implementation contract:**
+
+- The voice pipeline must not enable call recording, persist raw audio, place audio in logs/traces,
+  or introduce an audio-storage provider. Any future audio capture requires a new explicit decision.
+- Store the transcript with tenant, operation, call/session, candidate/recap versions, bounded turn
+  or offset references, timestamps, transcription provider/model/version where available, D41
+  result/reason codes, and integrity/linkage metadata required for audit.
+- Calculate expiry deterministically as one calendar year from authoritative call-end time; define
+  leap-day and deletion-job timing semantics before implementation and expose overdue deletion as
+  an operational failure rather than silently extending retention.
+- On expiry, delete the transcript from primary storage and address replicas, exports, caches,
+  traces, and backups according to an approved deletion contract. Never use expired content for
+  model context, analytics, or authorization.
+- Transcripts remain untrusted evidence and cannot mutate mandates or authorize commitments.
+  Minimize unrelated speech and secrets in logs; do not duplicate transcript bodies into audit logs.
+- This decision fixes modality and retention duration only. Notice/consent, authorized roles,
+  encryption/key management, legal holds, deletion latency/backups, subject requests, and
+  observability-provider handling remain separate decisions and must not be inferred here.
+
+**Verification:** NOT RUN. Required evidence includes proof no audio artifact/provider recording
+is created; exact call-to-transcript/audit linkage; one-year boundary including leap-day cases;
+deletion across every approved copy; overdue-deletion alerting; tenant isolation; transcript/log
+minimization; expired-evidence rejection; ASR uncertainty failing closed; and proof that transcript
+content cannot alter a mandate, policy result, or commitment state.
+
+**Would change if:** applicable legal obligations, an approved legal hold, customer contractual
+requirements, or validated risk analysis require a different period. Any exception must be
+explicitly authorized, scoped, auditable, and must not silently introduce audio recording.

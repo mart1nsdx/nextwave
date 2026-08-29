@@ -37,6 +37,12 @@ DECISION_LOG D8; `policy/` is still the only thing that authorizes anything.
 → Affects: whoever wires `voice/session.py` to a real operation — pass the composed
 prompt and greeting instead of the module-level `SYSTEM_PROMPT` / `GREETING`. Físico:
 `domain/Operation` and `domain/Mandate` should map *into* `CallContext`, not replace it.
+## 2026-08-29T16:59-0500 · voice/data/security · Person 2/Codex
+Human-approved D42/D-13A: Volta stores transcripts and linked audit metadata for one year,
+but captures and stores no call audio.
+→ Affects: everyone. Do not enable provider recording or duplicate transcript bodies into logs;
+  preserve transcript uncertainty, enforce expiry/deletion, and keep access/crypto/consent pending.
+
 ## 2026-08-29T16:54-0500 · voice/domain/policy/security · Person 2/Codex
 Human-approved D41/D-04P: carrier confirmation is verbal but accepted only by deterministic
 gates bound to the exact complete recap version and anchored call evidence.
