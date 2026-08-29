@@ -2529,3 +2529,80 @@ commands cannot directly address email.
 provider supplies stronger authorization evidence. It may replace or augment the owner step only
 after provenance, legal authority, privacy, cost, revocation, and failure behavior are approved;
 mailbox control alone remains insufficient.
+
+## D37 / Person 2 D-04L — Fifteen-minute single-use carrier mailbox challenge
+
+**Status:** APPROVED
+
+**Approved by:** Person 2 / human decision owner
+
+**Approved at:** 2026-08-29T16:45-05:00
+
+**Context:** D36/D-04K requires mailbox-control verification but leaves token lifetime,
+replacement, reuse, and issuance abuse undefined. A challenge enables a financially
+consequential destination and therefore cannot remain reusable or indefinitely valid.
+
+**Alternatives considered:**
+
+- **A — Fifteen-minute, single-use challenge.** One active challenge per contact; replacement
+  invalidates the prior token; rate limit issuance to three/contact/hour and ten/tenant/day.
+- **B — One-hour challenge.** More tolerant of delivery delay but increases stolen/forwarded
+  link exposure.
+- **C — Twenty-four-hour challenge.** Convenient for asynchronous onboarding but too broad
+  for an imminent commitment workflow.
+- **D — No expiry.** Simple but unsafe against replay, mailbox compromise, forwarding, and
+  forgotten onboarding links.
+
+**Decided:** Alternative A. A challenge expires exactly 15 minutes after trusted server-side
+issuance, is valid for one atomic consumption, and only the newest challenge for a specific
+tenant/carrier/contact version may be active. Replacement invalidates the previous challenge.
+Issuance is limited to three per contact in a rolling hour and ten per tenant in a rolling day.
+Expiry or rate limit never verifies the contact or changes mandate/commitment state.
+
+**Why:** A bounds exposure while allowing ordinary email delivery and immediate onboarding.
+Single-active and single-use semantics make replay/replacement outcomes deterministic, while
+issuance limits constrain email bombing, quota depletion, and enumeration.
+
+**Trade-off accepted:** delayed email or human response may require a replacement and repeated
+owner coordination. Tenant-level limits can block legitimate bulk onboarding. Distributed rate
+state and concurrency add implementation work.
+
+**Implementation contract:**
+
+- Generate at least 128 bits of cryptographically secure random token material. Send the raw
+  token only in the verification URL; store only a keyed hash/digest with key version and the
+  D36 binding metadata. Never log, persist, expose, or place the raw token in model context.
+- Set `expires_at = issued_at + 15 minutes` using trusted server UTC. Boundary semantics:
+  `now < expires_at` may validate; `now >= expires_at` is expired. Client/email/model time is ignored.
+- Before issuance, atomically reserve both rolling-window limits: maximum three issued challenges
+  for the exact contact in any preceding 60 minutes and ten for the tenant in any preceding
+  24 hours. Count successful provider submissions and ambiguous send attempts conservatively;
+  definite pre-dispatch validation failures do not consume email quota but remain audited.
+- Maintain at most one active challenge for the exact contact version. A replacement transaction
+  marks every prior active challenge invalid before creating/sending the new one. Failure or
+  uncertainty sending the replacement does not reactivate an older token.
+- Atomically verify digest using constant-time comparison; bind tenant/carrier/contact/version/
+  address/purpose; check newest/active/unused/unexpired status and both D36 owner approval and
+  current contact state; then consume once and transition to verified. Concurrent/repeated use
+  returns a generic invalid/used response without another state change.
+- A contact/address/carrier association change or revocation invalidates all challenges immediately.
+  Verification of one address/version cannot transfer to an alias or replacement.
+- Challenge endpoints reveal no carrier/contact/account existence through response body, timing,
+  redirect, or resend behavior. Apply network/account abuse controls in addition to the approved
+  per-contact/tenant issuance limits, without using attacker-controlled headers as sole identity.
+- The fixed challenge email and landing page state only that mailbox control is being verified;
+  they contain no pre-agreement/commitment terms, mandate limits, alternative bids, payment request,
+  transcript, or confidential operational data and cannot confirm/accept anything else.
+- Preserve non-secret issuance/provider/result/expiry/replacement/consumption audit evidence and
+  reason codes. Expired/invalid raw tokens must not be retained for debugging.
+
+**Verification:** NOT RUN. Required evidence includes 14:59/15:00 boundaries, server/client clock
+skew, single/concurrent/replayed use, replacement before and after provider ambiguity, old-token
+invalidation, contact/address/version/revocation changes, digest/key rotation, constant-time path,
+2/3/4 per-hour and 9/10/11 per-day issuance boundaries, rolling-window edges, concurrent quota
+reservation, cross-tenant/contact tokens, enumeration/timing behavior, quota accounting, secret
+redaction, and proof that challenge completion cannot accept terms or mutate authority.
+
+**Would change if:** measured delivery latency or accessibility evidence shows 15 minutes is
+unworkable. Any longer lifetime or higher issuance limit requires abuse/quota analysis and human
+approval; no adaptive model-selected extension is permitted.

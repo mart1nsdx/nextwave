@@ -37,6 +37,12 @@ DECISION_LOG D8; `policy/` is still the only thing that authorizes anything.
 → Affects: whoever wires `voice/session.py` to a real operation — pass the composed
 prompt and greeting instead of the module-level `SYSTEM_PROMPT` / `GREETING`. Físico:
 `domain/Operation` and `domain/Mandate` should map *into* `CallContext`, not replace it.
+## 2026-08-29T16:45-0500 · identity/notify/security · Person 2/Codex
+Human-approved D37/D-04L: carrier mailbox challenges expire after 15 minutes, are single-use,
+and have one active token per contact; replacement permanently invalidates the prior token.
+→ Affects: Person 2/3/4. Enforce three/contact/hour and ten/tenant/day issuance limits,
+  atomic consumption, hashed tokens, generic errors, and no authority/terms in verification.
+
 ## 2026-08-29T16:43-0500 · identity/notify/policy/security · Person 2/Codex
 Human-approved D36/D-04K: recap/commitment recipients resolve only from a versioned carrier
 directory; new/changed contacts need owner approval plus a mailbox-control challenge.
