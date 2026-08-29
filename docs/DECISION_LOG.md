@@ -2857,3 +2857,77 @@ reset with stale requests, and proof that model/caller cannot classify or alter 
 **Would change if:** verified usage shows this partition materially blocks legitimate work or
 the provider changes its allowance. Any ratio/limit/paid tier change requires current pricing,
 capacity, abuse, and USD cost approval; unused protected quota is not automatically reallocated.
+
+## D41 / Person 2 D-04P — Explicit verbal confirmation with deterministic evidence gates
+
+**Status:** APPROVED
+
+**Approved by:** Person 2 / human decision owner
+
+**Approved at:** 2026-08-29T16:54-05:00
+
+**Context:** a carrier's spoken response to Volta's recap is evidence that the non-binding
+pre-agreement terms were understood, but speech recognition and model interpretation are
+probabilistic. A generic "yes," silence, correction, or injected instruction must never be
+promoted into confirmation or commitment.
+
+**Alternatives considered:**
+
+- **A — Natural verbal confirmation plus deterministic evidence gates.** The model proposes a
+  constrained outcome, while trusted code verifies ordering, version binding, completeness,
+  contradictions, and evidence anchors before accepting `AFFIRMED`.
+- **B — Any positive-language model classification.** Conversationally easy, but vulnerable to
+  unrelated assent, transcription error, corrections, and prompt injection.
+- **C — Require keypad confirmation.** More deterministic at the input edge, but degrades the
+  natural call flow and still does not prove which complete term set the keypress addressed.
+- **D — Never accept call confirmation.** Safest against speech ambiguity, but prevents a usable
+  pre-agreement workflow and moves every candidate to manual review.
+
+**Decided:** Alternative A. The output model recaps the complete validated structured terms and
+asks a direct confirmation question. The input model may only propose `AFFIRMED`, `CORRECTED`,
+`REJECTED`, or `AMBIGUOUS`. Trusted server-side code alone decides whether the evidence satisfies
+the selected outcome. This confirms only a non-binding pre-agreement under D31; it never creates
+a mandate, selects a winner, commits, sends an official email, or handles payment.
+
+**Why:** A preserves the requested natural conversation while keeping probabilistic components
+outside the authorization boundary. Binding assent to the exact recap version prevents stale or
+generic language from silently changing commercial terms.
+
+**Trade-off accepted:** legitimate confirmations may fail closed because of interruptions, poor
+audio, conflicting transcripts, or incomplete terms. The call gets at most one clarification
+attempt; unresolved evidence escalates rather than being guessed.
+
+**Implementation contract:**
+
+- Construct the spoken recap from a validated structured candidate. Before speaking, persist its
+  immutable candidate ID/version and recap digest; material fields must be complete under D9/D31.
+- Bind evidence to tenant, operation, call/session ID, candidate ID/version, recap digest, recap
+  and response turn IDs or audio offsets, timestamps, and model/schema versions. Neither model nor
+  caller may supply or rewrite authoritative identifiers.
+- A candidate can become `AFFIRMED` only when the proposed affirmation follows the complete recap
+  and direct question in the same call/session, all material fields remain unchanged, and no
+  corrective or contradictory content occurs after that recap.
+- `CORRECTED` updates the candidate through the validated proposal path, creates a new candidate/
+  recap version, and requires a new complete recap and confirmation. Earlier assent is invalid.
+- `REJECTED` remains unconfirmed. `AMBIGUOUS` permits exactly one fixed, non-leading clarification
+  question; a second ambiguity, no answer, interruption, or unusable evidence remains unconfirmed
+  and escalates.
+- Silence, politeness, an unrelated "yes," assent before the recap, low-confidence recognition,
+  conflicting ASR evidence, and meta-instructions are not affirmation. Untrusted text cannot alter
+  these gates or the authoritative mandate.
+- Only deterministically `AFFIRMED` candidates may enter D32 eligibility/ranking. Confirmation is
+  evidence, not authorization: all later selection and D31/D38 commitment gates still apply.
+- Audit the proposed outcome, deterministic result, reason codes, evidence references, versions,
+  clarification count, and transition without logging secrets. Audio/transcript retention,
+  consent, access, and deletion policy require a separate approved decision.
+
+**Verification:** NOT RUN. Required DUT-S cases include affirmation after the exact recap;
+affirmation before recap; unrelated assent; silence; rejection; correction followed by stale
+assent; corrected version with fresh assent; contradiction after assent; missing material fields;
+interruption; one and two ambiguities; low-confidence/conflicting ASR; replay across candidate,
+call, tenant, or recap versions; prompt-injection attempts; concurrent updates; and proof that an
+affirmed pre-agreement cannot directly invoke commitment or email dispatch.
+
+**Would change if:** validated call testing shows natural confirmation cannot meet acceptable
+false-accept and false-reject bounds. Any replacement must retain exact-term/version binding and
+deterministic server-side acceptance; convenience alone cannot move authority into a model.

@@ -37,6 +37,12 @@ DECISION_LOG D8; `policy/` is still the only thing that authorizes anything.
 → Affects: whoever wires `voice/session.py` to a real operation — pass the composed
 prompt and greeting instead of the module-level `SYSTEM_PROMPT` / `GREETING`. Físico:
 `domain/Operation` and `domain/Mandate` should map *into* `CallContext`, not replace it.
+## 2026-08-29T16:54-0500 · voice/domain/policy/security · Person 2/Codex
+Human-approved D41/D-04P: carrier confirmation is verbal but accepted only by deterministic
+gates bound to the exact complete recap version and anchored call evidence.
+→ Affects: Person 1/2/3. Treat model output as a four-value proposal, reject stale/corrective/
+  ambiguous assent, allow one clarification, and keep confirmation non-binding under D31.
+
 ## 2026-08-29T16:51-0500 · notify/policy/security · Person 2/Codex
 Human-approved D40/D-04O: protect 50 Resend messages/day and 1,500/month exclusively for
 official commitments; challenges and recaps share only the unreserved half.
