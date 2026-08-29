@@ -25,6 +25,12 @@ invented timestamps is worse than no log, because the ordering lies silently.
 
 ---
 
+## 2026-08-29T17:27-05 · config, repo, supabase · Codex
+Replaced the legacy `SUPABASE_SERVICE_ROLE_KEY` configuration with
+`SUPABASE_SECRET_KEY` for backend-only evidence persistence.
+→ Affects: everyone running the backend. Replace the old `.env` variable with the
+  Supabase `sb_secret_...` key; never expose it to the dashboard.
+
 ## 2026-08-29T17:23-05 · supabase, domain, agent · Codex
 Added `call_recaps.agreement_candidates` as a non-null JSONB array for audio-anchored
 agreement evidence. The model writes candidates only; deterministic policy remains the

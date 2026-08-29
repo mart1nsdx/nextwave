@@ -60,7 +60,7 @@ class Settings(BaseSettings):
 
     # --- Escalation and callbacks ---
     supabase_url: str = ""
-    supabase_service_role_key: str = ""
+    supabase_secret_key: str = ""
     escalation_phone_number: str = ""
     sendgrid_api_key: str = ""
     recap_from_email: str = ""

@@ -57,7 +57,7 @@ class RecapService:
 
 
 def _build_store(settings: Settings) -> TranscriptStore:
-    if settings.supabase_url and settings.supabase_service_role_key:
+    if settings.supabase_url and settings.supabase_secret_key:
         return SupabaseTranscriptStore(settings)
     log.warning("supabase_unconfigured_using_memory_store")
     return InMemoryTranscriptStore()

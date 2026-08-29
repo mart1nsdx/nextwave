@@ -174,7 +174,7 @@ while I was heads down?"
 ## Secrets
 
 `.env` is gitignored and never committed. `backend/.env.example` is the authoritative list of
-keys, with empty values and a note on each. The Supabase service-role key stays server-side —
+keys, with empty values and a note on each. The Supabase secret key stays server-side —
 never in `dashboard/`. If a key is committed, rotate it immediately and tell the team.
 
 ## Working agreements for agents
