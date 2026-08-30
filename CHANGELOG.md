@@ -25,6 +25,14 @@ invented timestamps is worse than no log, because the ordering lies silently.
 
 ---
 
+## 2026-08-29T23:49-0500 · docs · Diego/claude
+`docs/STRUCTURE.md`: propuesta de bajar de once paquetes a siete. Cuatro fusiones con
+motivo — telephony dentro de voice, ledger dentro de store, market dentro de tools, y
+stt/tts aplanados con los fakes a tests/. Ninguna garantía se debilita: el mapa `ALLOWED`
+completo queda en ocho líneas y `policy/` sigue siendo un sumidero.
+→ Afecta: nadie todavía — es propuesta, no refactor. `docs/ARCHITECTURE.md` sigue siendo la
+  referencia de la estructura actual. Si se adopta, cambia dónde vive cada import, así que
+  conviene decidirlo después del pitch y no a mitad de una rama.
 ## 2026-08-29T17:27-05 · config, repo, supabase · Codex
 Replaced the legacy `SUPABASE_SERVICE_ROLE_KEY` configuration with
 `SUPABASE_SECRET_KEY` for backend-only evidence persistence.
