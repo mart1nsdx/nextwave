@@ -8,6 +8,12 @@ implementation with no network. All database access in the codebase goes through
 a Supabase client constructed anywhere else is a bug.
 """
 
+from app.repo.operations import InMemoryOperationStore, SupabaseOperationStore
 from app.repo.store import InMemoryTranscriptStore, SupabaseTranscriptStore
 
-__all__ = ["InMemoryTranscriptStore", "SupabaseTranscriptStore"]
+__all__ = [
+    "InMemoryOperationStore",
+    "SupabaseOperationStore",
+    "InMemoryTranscriptStore",
+    "SupabaseTranscriptStore",
+]

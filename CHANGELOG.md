@@ -25,6 +25,63 @@ invented timestamps is worse than no log, because the ordering lies silently.
 
 ---
 
+## 2026-08-29T20:46-0500 · market/config/docs · Diego/claude
+`market/` is no longer empty. `Rfq` dials N carriers concurrently, holds their offers
+while the market is OPEN, and awards exactly once in AWARDING — the phase machine *is*
+invariant #5, so a late offer cannot change a decision already being made and a second
+award has no phase to run in. `compare()` returns the auditable table with a reason per
+carrier, ranked by the same `policy.select_best` that awards, so the table can never
+disagree with the outcome. Dialling is injected, not imported: `market/` may not reach
+`telephony/`.
+That unblocked UGLY_CASES row 4 (flat refusal), so **all 20 rows now have a test**, and a
+new check fails the build if the table ever names one that does not exist.
+Also: `.env` at the repo root was invisible to `cd backend && uvicorn` — `env_file=".env"`
+resolves against the working directory — so every key read as empty. Fixed, both locations
+read. `.env.example` had drifted eleven keys and still documented `SUPABASE_SERVICE_ROLE_KEY`;
+rewritten, with a test that fails when it disagrees with `config.py` in either direction.
+Three mermaid architecture diagrams in `docs/ARCHITECTURE.md`, verified to render, and a
+README carrying the CHALLENGE.md §3 capability table with honest status.
+Suite 114 -> 131, ruff and mypy clean.
+→ Affects: everyone. The env fix changes whether your server sees any configuration at
+  all — if things mysteriously worked only from the repo root before, this is why. Recaps
+  still need SENDGRID_API_KEY / RECAP_FROM_EMAIL / RECAP_TO_EMAIL, which are set in
+  neither .env today, so commitments will stall at RECAP_FAILED until they are.
+
+## 2026-08-29T20:28-0500 · domain/repo/tools/main/telephony · Diego/claude
+Closed the commitment chain. Nothing wrote to `offers`, `policy_decisions`, `commitments`,
+`evidence` or `call_recap_deliveries`: the live path reached "recap generated" and stopped
+one step short of the two things the brief actually asks for. New `repo/operations.py`
+(Supabase + in-memory twin) and `tools/chain.py` run
+evaluate -> decision row -> VERBAL -> recap sent -> RECAP_SENT -> COMMITTED, writing the
+refusals too. `RecapService` now actually sends and records delivery; an unconfigured
+mailer returns FAILED rather than a quiet no-op, so a commitment stalls visibly instead of
+passing as verified. Recording starts over REST (`<Connect><Stream>` is terminal TwiML, so
+`<Record>` never runs) and lands in `recordings`, which means an audio offset finally
+points at audio somebody can play. Ugly cases: 19 of 20 rows now have a test carrying the
+row's exact name; row 4 is documented as an open gap because it needs `market/`.
+Suite 92 -> 112, ruff and mypy clean.
+→ Affects: everyone. `main.py` gained a `recap_sender` argument, `TranscriptStore` gained
+  `record_recording`/`list_recordings`, and `RecapService.__init__` now takes a sender —
+  rebase before touching the composition root. Sending is live: set `RECAP_TO_EMAIL` and
+  `SENDGRID_API_KEY` or every recap records as FAILED by design.
+
+## 2026-08-29T20:14-0500 · integration · Diego/claude
+Integrated the three diverged lines of work onto one branch off `main`: `origin/martin`
+(the six policy/evidence/drayage migrations, `seed.sql`, `schema.dbml`) and
+`origin/docs/approve-d01-reference-monitor` (the deterministic policy kernel, the
+conversation guard, the handoff lifecycle and 45 more tests). Neither contained the other,
+and neither was self-consistent alone: the kernel decides against `offers`,
+`policy_decisions`, `commitments` and `evidence`, and those tables only existed in the
+migrations on `martin`. Suite goes 41 passed / 2 skipped → **92 passed / 0 skipped**; the
+two scaffolded skips in `test_policy.py` and `test_ugly_cases.py` are now real tests.
+Conflicts were documentation only and nothing was dropped: CHANGELOG entries from both
+sides interleaved by timestamp, and `docs/DECISION_LOG.md` keeps D1–D8 plus D-DB-01..04
+with Person 2's 67 decisions moved whole into `docs/DECISION_LOG_SECURITY.md`, indexed by
+which ones have code behind them.
+→ Affects: everyone. `main` had neither the policy engine nor the schema, so anything built
+  on `main` today was building against tables and an authorization layer it could not see.
+  Rebase onto this before continuing.
+
 ## 2026-08-29T19:50-0500 · scripts/policy/security · Person 2/Codex
 Integrated main's recap-ranking workflow as analysis-only and fail-closed its `--commit`, `--sms`,
 and `--force-incomplete` modes until typed proposals pass deterministic policy and a one-use claim.
@@ -102,6 +159,7 @@ Dry-run by default; refuses to award a carrier whose recap has no confirmed pric
   (`offers`, `commitments`, …) that the deployed Supabase project already has; those
   tables are not in `backend/app/` or the migrations on this branch yet.
 
+
 ## 2026-08-29T18:29-05:00 · domain, policy, tools, repo, supabase · Codex
 Added the audited handoff contract: deterministic authorization, one idempotent request
 per call, append-only lifecycle records, and the corresponding Supabase migration.
@@ -154,6 +212,19 @@ sole future authority that can write commitments.
 → Affects: dashboard and policy. Read the candidates from the persisted recap; never
   treat them as `COMMITTED` without the policy and written-recap gates.
 
+## 2026-08-29T17:12-0500 · supabase · Diego/claude
+Policy and evidence spine: 22 new tables (operations, mandates, rfqs, offers + cost
+components, commitments + transitions, evidence, policy_decisions, ledger_events,
+participant_segments, fx_rate_snapshots, drayage vertical). All six migrations are now
+applied to the `Execute` project, which was empty -- including the two on `martin`.
+→ Affects: **everyone.** `SUPABASE_URL` must point at `hizwyjrjvzrdohuxklle`; the schema
+  existed nowhere before this. `call_recaps`/`call_briefs`/`call_recap_deliveries` gained
+  `case_id` (the `call_sid` FK still works). `call_cases` gained `provider`,
+  `provider_call_id`, `clock_reference_at`. `call_transcript_events` gained `confidence`.
+  Persona 4: read-model tables now carry a `select` policy for `authenticated`, so Realtime
+  works -- this reverses the RLS comment in `20260829125514` and needs martin's ack.
+  Persona 1: `recordings` exists and is empty because no `<Record>` is configured anywhere.
+  Reasoning in `docs/DATA_MODEL.md`.
 ## 2026-08-29T16:47-05 · voice, telephony, ledger, repo, agent · Codex
 The live bidirectional call now opens an evidence case, persists final caller and agent
 turns with Twilio audio offsets, and produces persisted recap and call-brief reports when

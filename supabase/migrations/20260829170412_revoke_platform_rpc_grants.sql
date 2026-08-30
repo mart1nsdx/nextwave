@@ -1,0 +1,21 @@
+-- Closes the one WARN from `supabase advisors --type security`.
+--
+-- public.rls_auto_enable() is a Supabase PLATFORM object, not ours: an event trigger that
+-- enables RLS on every newly created table in public. (It is why RLS was already on for
+-- the tables in the previous migrations before their explicit ALTER ran.)
+--
+-- It ships SECURITY DEFINER with EXECUTE granted to anon and authenticated, which makes it
+-- callable unauthenticated at /rest/v1/rpc/rls_auto_enable. Real risk is low -- it calls
+-- pg_event_trigger_ddl_commands(), which errors outside an event-trigger context, so an
+-- anon call fails rather than doing anything. But a SECURITY DEFINER function reachable by
+-- anon is a finding on any review of a database holding call recordings and commitments,
+-- and the grant buys nothing.
+--
+-- Revoking EXECUTE does not affect the event trigger. Event triggers fire as the trigger,
+-- never through an EXECUTE grant, so RLS auto-enable keeps working.
+-- PUBLIC first, and it is the one that matters: the ACL carries `=X/postgres`, whose
+-- leading `=` is a grant to PUBLIC, and anon/authenticated inherit EXECUTE through it.
+-- Revoking from the two roles alone leaves the function callable and the lint standing --
+-- verified by re-running the advisor after doing exactly that.
+revoke execute on function public.rls_auto_enable() from public;
+revoke execute on function public.rls_auto_enable() from anon, authenticated;

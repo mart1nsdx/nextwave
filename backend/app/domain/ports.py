@@ -8,8 +8,9 @@ model seam: ``agent/`` depends on ``RecapModel``, not on a vendor SDK.
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Any, Protocol
 
+from app.domain.commitment import ChainState, DecisionRow, OfferRow
 from app.domain.models import (
     CallBrief,
     CallCase,
@@ -59,6 +60,17 @@ class TranscriptStore(Protocol):
 
     async def get_recap_delivery(self, call_sid: str) -> RecapDelivery | None: ...
 
+    async def record_recording(
+        self,
+        call_sid: str,
+        *,
+        provider_recording_id: str,
+        storage_path: str | None = None,
+        duration_ms: int | None = None,
+    ) -> None: ...
+
+    async def list_recordings(self, call_sid: str) -> list[dict[str, Any]]: ...
+
     async def create_handoff(self, request: HandoffRequest) -> bool:
         """Store a request once. False means this call already has a handoff."""
 
@@ -104,3 +116,39 @@ class CallCompletedHook(Protocol):
     """What ``telephony/`` calls when Twilio reports a call finished. Wired to RecapService."""
 
     async def __call__(self, call_sid: str) -> None: ...
+
+
+class OperationStore(Protocol):
+    """Writes operation state: offers, policy decisions, commitments, evidence.
+
+    Separate from ``TranscriptStore`` because they answer different questions and fail
+    differently. Losing a transcript segment degrades the record; losing a commitment
+    transition means the system does not know whether a truck is booked.
+    """
+
+    async def record_offer(self, offer: OfferRow) -> str: ...
+
+    async def record_decision(self, decision: DecisionRow) -> str: ...
+
+    async def accept_offer(self, offer_id: str) -> None: ...
+
+    async def open_commitment(
+        self,
+        *,
+        operation_id: str,
+        offer_id: str,
+        participant_segment_id: str,
+        audio_offset_ms: int,
+        decision_id: str | None = None,
+    ) -> str: ...
+
+    async def transition(
+        self,
+        commitment_id: str,
+        *,
+        to_state: ChainState,
+        reason: str,
+        decision_id: str | None = None,
+    ) -> None: ...
+
+    async def commitment_state(self, commitment_id: str) -> ChainState | None: ...

@@ -1,5 +1,6 @@
 """The Twilio edge, wired to the voice pipeline through injected callbacks."""
 
+import asyncio
 from collections.abc import Awaitable, Callable
 
 import structlog
@@ -14,6 +15,7 @@ from app.voice.session import FinalTranscriptSink, build_session
 from .handoff import TwilioHandoff
 from .idempotency import SeenEvents
 from .outbound import place_call
+from .recording import start_recording
 from .stream import MediaStreamTransport
 from .twiml import (
     connect_stream,
@@ -62,11 +64,34 @@ def create_router(
                 from_number=str(form.get("From", "")) or None,
                 to_number=str(form.get("To", "")) or None,
             )
+            # Fire and forget: TwiML has to come back immediately or Twilio times out
+            # and the caller hears nothing. A slow recorder must never delay the answer.
+            asyncio.create_task(start_recording(call_sid, settings))
         log.info("call_connected", call_id=call_sid)
         return Response(
             content=connect_stream(websocket_url(settings.public_base_url)),
             media_type="application/xml",
         )
+
+    @router.post("/twilio/recording")
+    async def recording(request: Request) -> Response:
+        """Twilio reports the finished recording. Redelivery must be a no-op (#7)."""
+        form = await request.form()
+        call_sid = str(form.get("CallSid", ""))
+        recording_sid = str(form.get("RecordingSid", ""))
+        if not call_sid or not recording_sid:
+            return Response(status_code=204)
+        if not seen_status_events.record(f"recording:{recording_sid}"):
+            return Response(status_code=204)
+        duration = str(form.get("RecordingDuration", ""))
+        await store.record_recording(
+            call_sid,
+            provider_recording_id=recording_sid,
+            storage_path=str(form.get("RecordingUrl", "")) or None,
+            duration_ms=int(duration) * 1000 if duration.isdigit() else None,
+        )
+        log.info("recording_stored", call_id=call_sid, recording_id=recording_sid)
+        return Response(status_code=204)
 
     @router.post("/twilio/status")
     async def status(request: Request) -> Response:

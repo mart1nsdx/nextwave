@@ -12,6 +12,8 @@ import asyncio
 from datetime import UTC, datetime
 from typing import Any
 
+import structlog
+
 from app.config import Settings
 from app.domain.models import (
     CallBrief,
@@ -25,6 +27,8 @@ from app.domain.models import (
     TranscriptEvent,
     TranscriptTrack,
 )
+
+log = structlog.get_logger(__name__)
 
 
 def _now() -> datetime:
@@ -40,6 +44,7 @@ class InMemoryTranscriptStore:
         self._recaps: dict[str, Recap] = {}
         self._briefs: dict[str, CallBrief] = {}
         self._deliveries: dict[str, RecapDelivery] = {}
+        self._recordings: dict[str, dict[str, Any]] = {}
         self._handoffs: dict[str, HandoffRequest] = {}
         self._handoff_by_call: dict[str, str] = {}
         self._handoff_events: dict[str, dict[str, HandoffEvent]] = {}
@@ -107,6 +112,24 @@ class InMemoryTranscriptStore:
 
     async def get_recap_delivery(self, call_sid: str) -> RecapDelivery | None:
         return self._deliveries.get(call_sid)
+
+    async def record_recording(
+        self,
+        call_sid: str,
+        *,
+        provider_recording_id: str,
+        storage_path: str | None = None,
+        duration_ms: int | None = None,
+    ) -> None:
+        self._recordings[provider_recording_id] = {
+            "call_sid": call_sid,
+            "provider_recording_id": provider_recording_id,
+            "storage_path": storage_path,
+            "duration_ms": duration_ms,
+        }
+
+    async def list_recordings(self, call_sid: str) -> list[dict[str, Any]]:
+        return [r for r in self._recordings.values() if r["call_sid"] == call_sid]
 
     async def create_handoff(self, request: HandoffRequest) -> bool:
         if request.call_sid in self._handoff_by_call:
@@ -382,6 +405,50 @@ class SupabaseTranscriptStore:
         result = await self._run(_query)
         rows = result.data or []
         return RecapDelivery.model_validate(rows[0]) if rows else None
+
+    async def record_recording(
+        self,
+        call_sid: str,
+        *,
+        provider_recording_id: str,
+        storage_path: str | None = None,
+        duration_ms: int | None = None,
+    ) -> None:
+        """Idempotent on (provider, provider_recording_id) — Twilio redelivers this hook."""
+        case_id = await self._case_id(call_sid)
+        if case_id is None:
+            log.warning("recording_without_case", call_id=call_sid)
+            return
+        row = {
+            "case_id": case_id,
+            "provider": "twilio",
+            "provider_recording_id": provider_recording_id,
+            "storage_path": storage_path,
+            "duration_ms": duration_ms,
+        }
+
+        def _upsert() -> Any:
+            return (
+                self._db.table("recordings")
+                .upsert(
+                    row,
+                    on_conflict="provider,provider_recording_id",
+                    ignore_duplicates=True,
+                )
+                .execute()
+            )
+
+        await self._run(_upsert)
+
+    async def list_recordings(self, call_sid: str) -> list[dict[str, Any]]:
+        case_id = await self._case_id(call_sid)
+        if case_id is None:
+            return []
+
+        def _query() -> Any:
+            return self._db.table("recordings").select("*").eq("case_id", case_id).execute()
+
+        return list((await self._run(_query)).data or [])
 
     async def create_handoff(self, request: HandoffRequest) -> bool:
         case_id = await self._case_id(request.call_sid)

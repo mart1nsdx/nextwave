@@ -8,13 +8,22 @@ than three hours later, mid-call, when the recap tries to send.
 """
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+_BACKEND = Path(__file__).resolve().parent.parent
+# Both locations, repo root last so it wins on conflict. A bare ".env" resolves against
+# the *working directory*, which meant `cd backend && uvicorn ...` — the command in the
+# README — silently found nothing while `.env` sat at the repo root, and every key read as
+# empty. Anchoring to this file's location makes the answer independent of where the
+# process was started from.
+_ENV_FILES = (_BACKEND / ".env", _BACKEND.parent / ".env")
+
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=_ENV_FILES, extra="ignore")
 
     # --- Telephony (Twilio) ---
     twilio_account_sid: str = ""
