@@ -13,12 +13,15 @@ from app.domain.models import (
     HandoffReason,
     Recap,
     RecapContext,
+    RecapDelivery,
+    RecapDeliveryStatus,
     Speaker,
     TranscriptEvent,
     TranscriptTrack,
 )
-from app.domain.ports import RecapModel, TranscriptStore
+from app.domain.ports import RecapModel, RecapSender, TranscriptStore
 from app.ledger import EvidenceLedger
+from app.notify import NullRecapSender, SendGridRecapSender
 from app.repo import InMemoryTranscriptStore, SupabaseTranscriptStore
 from app.telephony.handoff import TwilioHandoff
 from app.telephony.router import create_router
@@ -40,12 +43,28 @@ def configure_logging() -> None:
 
 
 class RecapService:
-    """Generates reports from stored evidence. It never creates a commitment."""
+    """Generates reports from stored evidence, and sends the written recap.
 
-    def __init__(self, ledger: EvidenceLedger, store: TranscriptStore, model: RecapModel) -> None:
+    It still never creates a commitment. Sending is here because the brief makes delivery
+    the second of the two verifications — a recap that was generated but never left the
+    building verifies nothing — and because the delivery outcome is what
+    ``tools/chain.py`` reads before it lets anything reach COMMITTED.
+    """
+
+    def __init__(
+        self,
+        ledger: EvidenceLedger,
+        store: TranscriptStore,
+        model: RecapModel,
+        sender: RecapSender,
+        *,
+        recap_to_email: str = "",
+    ) -> None:
         self._ledger = ledger
         self._store = store
         self._model = model
+        self._sender = sender
+        self._recap_to = recap_to_email
 
     async def run(self, call_sid: str, *, context: RecapContext | None = None) -> Recap | None:
         transcript = await self._ledger.transcript_text(call_sid)
@@ -56,7 +75,44 @@ class RecapService:
         brief = await build_brief(call_sid, transcript, self._model)
         await self._store.save_recap(recap)
         await self._store.save_brief(brief)
+        await self.deliver(recap)
         return recap
+
+    async def deliver(self, recap: Recap) -> RecapDelivery:
+        """Send the recap and record the outcome, including the failures.
+
+        A failed send is written down rather than raised: the call is already over, and a
+        FAILED row is what stops a commitment from counting. Silence here would let one
+        look verified.
+        """
+        if not self._recap_to:
+            delivery = RecapDelivery(
+                call_sid=recap.call_sid,
+                status=RecapDeliveryStatus.FAILED,
+                error="RECAP_TO_EMAIL is not configured",
+            )
+        else:
+            delivery = await self._sender.send(recap, self._recap_to)
+        await self._store.set_recap_delivery(delivery)
+        log.info(
+            "recap_delivery",
+            call_id=recap.call_sid,
+            status=delivery.status.value,
+            error=delivery.error,
+        )
+        return delivery
+
+
+def _build_sender(settings: Settings) -> RecapSender:
+    """SendGrid when configured, and a sender that reports failure when it is not.
+
+    Never a no-op that reports success: an unconfigured mailer must make commitments stall
+    in RECAP_FAILED, which is visible, rather than let them pass as verified.
+    """
+    if settings.sendgrid_api_key and settings.recap_from_email:
+        return SendGridRecapSender(settings)
+    log.warning("sendgrid_unconfigured_recaps_will_fail")
+    return NullRecapSender()
 
 
 def _build_store(settings: Settings) -> TranscriptStore:
@@ -70,6 +126,7 @@ def create_app(
     settings: Settings | None = None,
     store: TranscriptStore | None = None,
     recap_model: RecapModel | None = None,
+    recap_sender: RecapSender | None = None,
 ) -> FastAPI:
     configure_logging()
     settings = settings or get_settings()
@@ -79,7 +136,10 @@ def create_app(
         settings.openai_api_key,
         settings.openai_recap_model or settings.openai_agent_model,
     )
-    recap_service = RecapService(ledger, store, recap_model)
+    recap_sender = recap_sender or _build_sender(settings)
+    recap_service = RecapService(
+        ledger, store, recap_model, recap_sender, recap_to_email=settings.recap_to_email
+    )
     twilio_handoff = TwilioHandoff(settings, store)
     handoff_tool = HandoffTool(store, twilio_handoff.start)
     sequence_by_call: dict[str, int] = {}
