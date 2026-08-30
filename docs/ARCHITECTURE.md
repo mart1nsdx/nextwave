@@ -107,6 +107,134 @@ Three tests keep this honest:
 - `test_layering_map_is_acyclic` — a cycle would mean two packages are really one, and
   the split is decorative.
 
+## 4b. The same three ideas, drawn
+
+Three diagrams, because three different questions get asked about this system: what may
+decide, what counts as decided, and what happens on one call. They render on GitHub.
+
+### The trust boundary
+
+Everything above the line handles words a stranger said down a phone line. Everything
+below it decides. The arrows only ever cross downward — that is the entire security model,
+and `tests/test_layering.py` fails the build when one points the other way.
+
+```mermaid
+flowchart TB
+    subgraph UNTRUSTED["UNTRUSTED — everything a counterparty can influence"]
+        direction LR
+        TEL["telephony/<br/><i>Twilio webhooks, media streams</i>"]
+        VOICE["voice/<br/><i>STT · turn-taking · barge-in · TTS</i>"]
+        AGENT["agent/<br/><i>prompts, recap extraction</i>"]
+        TEL --> VOICE
+        VOICE --> AGENT
+    end
+
+    subgraph MEDIATED["MEDIATED — the only crossing point"]
+        TOOLS["tools/<br/><i>propose_* · conversation guard · chain</i>"]
+    end
+
+    subgraph TRUSTED["DETERMINISTIC — plain Python, no model, no network"]
+        direction LR
+        MARKET["market/<br/><i>RFQ and award phases</i>"]
+        POLICY["policy/<br/><i>evaluate_quote · select_best</i>"]
+        LEDGER["ledger/<br/><i>append-only evidence</i>"]
+        REPO["repo/<br/><i>the only Supabase client</i>"]
+        DOMAIN["domain/<br/><i>types only</i>"]
+        NOTIFY["notify/<br/><i>recap out</i>"]
+        DB[("Postgres<br/><i>constraints, triggers,<br/>append-only grants</i>")]
+        MARKET --> POLICY
+        POLICY --> DOMAIN
+        LEDGER --> REPO
+        REPO --> DOMAIN
+        REPO --> DB
+        NOTIFY --> DOMAIN
+    end
+
+    VOICE --> TOOLS
+    TOOLS --> MARKET
+    TOOLS --> POLICY
+    TOOLS --> LEDGER
+    TOOLS --> NOTIFY
+
+    classDef untrusted fill:#fde8e8,stroke:#c0392b,color:#7b241c
+    classDef mediated fill:#fef5e7,stroke:#b9770e,color:#7e5109
+    classDef trusted fill:#e8f6ef,stroke:#1e8449,color:#145a32
+    class TEL,VOICE,AGENT untrusted
+    class TOOLS mediated
+    class MARKET,POLICY,LEDGER,REPO,DOMAIN,NOTIFY,DB trusted
+```
+
+`policy/` imports nothing but `domain/`. It therefore *cannot* call a model, reach the
+network, or read a prompt — so "the LLM never writes a commitment" is a property of the
+graph rather than a rule someone has to remember at 4am.
+
+### What counts as committed
+
+A boolean would call a booking real when no truck exists. The chain separates a verbal
+yes, a recap the counterparty has actually received, and the hours-later facts that arrive
+after the call is over. **Only the green state may be shown to a human as firm.**
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*] --> VERBAL: counterparty confirms<br/>on the call, anchored<br/>to an audio offset
+    VERBAL --> RECAP_SENT: written recap delivered
+    VERBAL --> RECAP_FAILED: send failed or<br/>outcome unknown
+    VERBAL --> NOT_COMMITTED: another carrier<br/>won the RFQ first
+    RECAP_SENT --> COMMITTED: both verifications present
+    COMMITTED --> RESOURCED: truck and driver assigned
+    RESOURCED --> DOCUMENTED: Carta Porte issued
+    DOCUMENTED --> EXECUTED: container moved
+    COMMITTED --> SUPERSEDED: renegotiated,<br/>new version created
+
+    classDef firm fill:#e8f6ef,stroke:#1e8449,color:#145a32
+    classDef dead fill:#fde8e8,stroke:#c0392b,color:#7b241c
+    class COMMITTED,RESOURCED,DOCUMENTED,EXECUTED firm
+    class RECAP_FAILED,NOT_COMMITTED dead
+```
+
+The database enforces the part that matters rather than trusting the code above it: a
+trigger rejects any transition into `COMMITTED` or later with no row in `evidence`, and a
+partial unique index allows exactly one accepted offer per RFQ.
+
+### One call, end to end
+
+The model proposes and speaks. It never decides. Note where the two verifications happen,
+and that the refusal path writes a row just like the approval path does — a denial you
+cannot show is indistinguishable from one that never happened.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Dispatcher<br/>(untrusted)
+    participant T as telephony/ + voice/
+    participant G as tools/ guard
+    participant P as policy/
+    participant R as repo/ → Postgres
+    participant N as notify/
+
+    C->>T: "eight five, Thursday"
+    T->>G: transcript + audio offset
+    G-->>T: "repeat the exact amount<br/>and the calendar date"
+    Note over G,P: never infers a number or a date
+    T->>C: asks
+    C->>T: "8,500 US dollars, September 3"
+    T->>G: complete draft
+    G->>P: evaluate_quote(mandate, proposal, fx)
+    alt within mandate, and anchored
+        P-->>G: ALLOW
+        G->>R: offer + policy_decision
+        G->>R: commitment VERBAL + evidence(offset)
+        G->>N: send recap
+        N-->>G: delivered
+        G->>R: RECAP_SENT → COMMITTED
+    else outside mandate, or no anchor
+        P-->>G: ESCALATE / DENY
+        G->>R: policy_decision (the refusal, on the record)
+        G->>T: hand the live call to a human,<br/>without hanging up
+    end
+```
+
 ## 5. Traceability — every required capability has an owner
 
 From `docs/CHALLENGE.md` §3. If a folder can't be traced to a row here, it shouldn't exist.
