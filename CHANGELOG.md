@@ -25,6 +25,41 @@ invented timestamps is worse than no log, because the ordering lies silently.
 
 ---
 
+## 2026-08-29T19:12-05 · scripts · Martin/claude
+`award_from_recaps.py --commit --sms` now texts the negotiation specs (carrier, container,
+tarifa, ventana, condiciones) to the awarded carrier's `counterparty_contacts.phone` via
+Twilio — and to no one else. `--sms` requires `--commit`; a Twilio/credential failure is
+reported, never fatal. The SMS body + result land in the JSON artifact.
+→ Affects: nobody. Uses the existing TWILIO_* creds in backend/.env.
+
+## 2026-08-29T19:03-05 · scripts · Martin/claude
+`award_from_recaps.py` now scopes strictly to one container / RFQ: it only compares
+carrier calls tied to that RFQ and excludes any other recap as noise. A call is tied by
+`call_cases.metadata->>'rfq_id'`, by an `offers` row, or by `--assign` (which `--commit`
+persists into `call_cases.metadata` as `{rfq_id, operation_ref, counterparty_id,
+container_number}`). If nothing is tied, it refuses rather than guessing.
+→ Affects: whoever wires the live outbound-call path — stamp those same
+  `call_cases.metadata` keys when the agent dials a carrier for an operation, so the
+  post-call comparison needs no manual `--assign`.
+
+## 2026-08-29T18:55-05 · tests · Martin/claude
+`test_voice_webhook_hands_the_call_to_our_socket` now forces `InMemoryTranscriptStore`.
+With a real `backend/.env` present it was building a live Supabase client and its
+`/twilio/voice` POST wrote a `call_cases` row to the shared project on every `pytest` run.
+→ Affects: nobody. If you saw stray `CA0123456789abcdef` rows in Supabase, this was why.
+
+## 2026-08-29T18:51-05 · scripts · Martin/claude
+New `backend/scripts/award_from_recaps.py`: post-processing tool that reads the
+`call_recaps` of one RFQ, normalises each carrier's quote (LLM extraction, never
+inference), scores them with an explainable formula, drafts the confirmation email, and
+— only with `--commit` — writes `offers` + `participant_segments` + a `commitments` row
+at `chain_state='VERBAL'` (+ `commitment_transitions`). It is NOT the live call path and
+never reaches `COMMITTED` (the DB evidence trigger and the real chain still gate that).
+Dry-run by default; refuses to award a carrier whose recap has no confirmed price.
+→ Affects: nobody yet — standalone, opt-in. It writes to the advanced drayage schema
+  (`offers`, `commitments`, …) that the deployed Supabase project already has; those
+  tables are not in `backend/app/` or the migrations on this branch yet.
+
 ## 2026-08-29T18:29-05:00 · domain, policy, tools, repo, supabase · Codex
 Added the audited handoff contract: deterministic authorization, one idempotent request
 per call, append-only lifecycle records, and the corresponding Supabase migration.
