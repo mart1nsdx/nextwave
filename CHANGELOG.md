@@ -25,6 +25,17 @@ invented timestamps is worse than no log, because the ordering lies silently.
 
 ---
 
+## 2026-08-29T21:46-0500 · notify/main · Nacho/agent
+`RecapService` now sends the recap email and records the outcome via `store.set_recap_delivery()`,
+so the invariant-#3 delivery gate can actually go green. `create_app()` builds
+`SendGridRecapSender` when `SENDGRID_API_KEY` and `RECAP_FROM_EMAIL` are both set and
+`NullRecapSender` (which reports FAILED, never "skipped") otherwise; both `RecapService(...)` and
+`create_app(recap_sender=...)` take an injected sender. Added `GET /calls/{call_sid}/recap-delivery`.
+Recipient is `settings.recap_to_email` until the carrier-contact binding (W1) lands.
+→ Affects: whoever wires persisted commitments (W5) — the gate is now readable from the store and
+  over HTTP; a delivery row is `sent` or `failed`, never absent-because-skipped. Anyone constructing
+  `RecapService` directly must pass a sender.
+
 ## 2026-08-29T19:50-0500 · scripts/policy/security · Person 2/Codex
 Integrated main's recap-ranking workflow as analysis-only and fail-closed its `--commit`, `--sms`,
 and `--force-incomplete` modes until typed proposals pass deterministic policy and a one-use claim.
