@@ -15,7 +15,7 @@ wording the agent uses to get there.
 | 3 | Silence | Counterparty goes quiet mid-negotiation | Re-prompt, then close with no commitment. Silence is never assent | `test_silence_is_not_consent` |
 | 4 | Flat refusal | "We don't serve that lane" | Close politely, mark carrier unavailable, continue the market | `test_refusal_ends_rfq_cleanly` |
 | 5 | Above-cap special deal | Inbound call offering 9,800 "today only" | Declined or escalated. Never committed | `test_above_cap_offer_never_commits` |
-| 6 | Ambiguous number | "eight-five" — 8,500? 85,000? | Ask. Never infer. Incomplete data until disambiguated | `test_ambiguous_amount_asks` |
+| 6 | Ambiguous number | "eight-five" / "ocho cinco" — 8,500? 85,000? | Ask. Never infer. Incomplete data until disambiguated. Same outcome in either language | `test_ambiguous_amount_asks` |
 | 7 | Unresolved weekday | "Thursday" with no date | Resolve to a calendar date and recap it before affirming the pre-agreement | `test_weekday_resolved_and_read_back` |
 | 8 | Contradicts itself | Two incompatible facts in one turn | Explicit conflict event, not last-write-wins | `test_contradiction_is_explicit_event` |
 | 9 | Barge-in | Interrupts mid-sentence | Agent stops talking, keeps context, adapts | `test_barge_in_preserves_context` |

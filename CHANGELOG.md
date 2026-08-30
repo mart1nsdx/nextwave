@@ -25,6 +25,25 @@ invented timestamps is worse than no log, because the ordering lies silently.
 
 ---
 
+## 2026-08-29T21:55-0500 · tools · Nacho/agent
+Made `tools/conversation_guard.py` bilingual (en/es). Every English pattern still works;
+Spanish was added alongside for spoken numbers, ISO-qualified currencies (`pesos mexicanos`,
+`dólares americanos`), amount triggers, all-in phrasing, months, day-first pickup and
+validity dates, equipment aliases, identity claims, and binding-authority claims. Matching
+now runs on an accent-folded 1:1 view so `dolares`/`dólares` behave identically; the text
+recorded as evidence is never normalised. Spanish component names (`flete`, `combustible`,
+`casetas`, `estadía`, `maniobras`, …) fold onto the English canonical line-item names, so a
+mid-call language switch still trips the conflict check instead of creating a duplicate
+component. `_date` no longer uses locale-dependent `strptime`, and the number-word
+alternation is generated longest-first (this also fixes `seventeen`/`seventy` mis-parsing
+as `seven`).
+→ Affects: everyone demoing or testing the guard. `filter_model_chunk` now blocks Spanish
+  binding language (`cerramos`, `queda reservado`, `es un trato`, `ya está apartado`,
+  `el camión es suyo`), and `input_directive` now reacts to Spanish quote turns that it
+  previously passed straight to the model. Guard responses are still English — translating
+  them is a separate decision. New sim scenarios `boss_approved_es` and
+  `ambiguous_amount_es`; `docs/UGLY_CASES.md` row 6 now has its test.
+
 ## 2026-08-29T19:50-0500 · scripts/policy/security · Person 2/Codex
 Integrated main's recap-ranking workflow as analysis-only and fail-closed its `--commit`, `--sms`,
 and `--force-incomplete` modes until typed proposals pass deterministic policy and a one-use claim.
