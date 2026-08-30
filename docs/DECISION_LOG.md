@@ -4181,3 +4181,81 @@ immediate revalidation, and an opaque one-use claim consumed by the allowlisted 
 **Verification:** static quality checks, full suite, direct CLI-gate tests, and internal-helper bypass
 tests are required. Deployed advanced-schema inspection, real FX ingestion, database writes, SMS,
 official commitment email, and live carrier effects remain NOT RUN.
+
+## D72 — Shared operator bearer token as the interim authentication for non-Twilio routes
+
+**Status: PROPOSED — awaiting human approval.** No human has reviewed or approved this
+entry. It is implemented on `fix/harden-public-surface` because the alternative was
+shipping an open dialling endpoint behind a public tunnel; it must not be read as an
+approved position on authentication, and it does not satisfy D44 or D45.
+
+**Proposed at:** 2026-08-29T21:50-0500 (from `date`, not from memory)
+
+**Context:** `POST /calls` placed a real, billable PSTN call to any E.164 number with no
+credential at all, and `GET /calls`, `/calls/{sid}/transcript`, `/recap` and `/brief`
+returned call evidence to anyone who reached the ngrok URL. D44 requires that transcript
+bodies be reachable only by the owning tenant's owner or an assigned auditor/security
+role, with fresh TOTP; D45 binds that access to a five-minute, non-renewable, per-request
+reauthorized session. The service has no tenant model, no user identity, no TOTP factor
+and no audit store, so neither decision can be implemented as written inside this
+hackathon. The gap between what D44/D45 require and no authentication whatsoever was being
+resolved, in practice, in favour of no authentication.
+
+**Alternatives considered:**
+
+- **A — Shared bearer token on every non-Twilio route (chosen).** One secret in `.env`,
+  compared with `secrets.compare_digest`. Removes anonymous access to dialling and to
+  evidence reads in an hour.
+- **B — Implement D44/D45 properly.** The correct destination, but it needs identity,
+  tenancy, roles, a TOTP factor, session binding and an audit trail. Not deliverable in the
+  time remaining, and a half-built version would be worse than an honest interim one.
+- **C — Authenticate only `POST /calls`.** Stops the money and the dialling abuse, but
+  leaves transcript bodies — the exact resource D44 restricts — world-readable.
+- **D — Ship as is and rely on the tunnel URL being unguessable.** Security by obscurity;
+  the URL is on screen during the demo and in the Twilio console.
+
+**Decided:** Alternative A, explicitly as a floor and not as compliance. One shared token
+(`INTERNAL_API_TOKEN`) gates `POST /calls` and every evidence read. `/health` stays
+unauthenticated (liveness only, reveals nothing). Twilio's own webhooks are authenticated
+separately by `X-Twilio-Signature`, not by this token.
+
+**Unconfigured behaviour:** an unset `INTERNAL_API_TOKEN` makes every guarded route refuse
+with 503 — including the reads, not only the mutating route. Fail closed (AGENTS.md
+invariant #6): forgetting a key must not be the way the system becomes public. The cost is
+that a fresh clone cannot read the API until one line is added to `.env`; the alternative
+cost is a dialling endpoint that opens itself whenever configuration is incomplete.
+
+**Why:** a shared secret is proportionate to a 24-hour build with a public tunnel and four
+trusted operators. An open dialling endpoint is not proportionate to anything: it spends
+real money, dials real phone numbers, and would be trivially abusable during judging.
+
+**Trade-off accepted:** the token authenticates a *bearer*, not an *actor*. There is no
+per-user attribution, no role separation between reading a transcript body and listing
+calls, no step-up authentication, no five-minute window, no revocation short of rotating
+the secret and restarting, and no audit trail of who read what. Every one of those is a
+D44/D45 requirement that this does **not** meet. Anyone holding the token holds every
+capability the API has.
+
+**Implementation contract:**
+
+- `app/telephony/auth.py` owns both guards; no other module compares secrets.
+- Compare with `secrets.compare_digest` over UTF-8 bytes, never `==`.
+- The token lives only in `.env` (gitignored) and in `backend/.env.example` as an empty key
+  with a note. It never enters the dashboard bundle, a log line, a URL, or a model prompt.
+  If it leaks, rotate it and tell the team.
+- Adding a non-Twilio route means adding the guard in the same commit; the default for a
+  new route is authenticated.
+- This entry is superseded, not amended, by real per-actor authorization under D44/D45.
+
+**Verification:** `backend/tests/test_webhook_auth.py` covers, and was run green:
+unauthenticated `POST /calls` → 401; wrong token → 401; correct token reaches the dialler;
+each of the four read routes → 401 without a token; unset token → 503 with and without a
+header; `/health` open. Full suite `114 passed`, with `ruff check`, `ruff format --check`
+and `mypy app/` clean. **NOT RUN / NOT PROVIDED:** any per-actor identity, tenancy, role,
+TOTP, session-binding, revocation or audit property of D44/D45; token rotation under load;
+behaviour against a real ngrok tunnel with live Twilio traffic; and anything about the
+dashboard, which does not yet call these endpoints and therefore does not yet send a token.
+
+**Would change if:** identity and tenancy exist, at which point D44/D45 replace this
+outright. Before then, any widening — a second token, a token in a query string, an
+exemption for a "read-only" route — needs its own decision and human approval.
