@@ -170,8 +170,8 @@ async def test_above_cap_offer_never_commits() -> None:
 
 
 @pytest.mark.asyncio
-async def test_missing_offset_is_not_verified() -> None:
-    """UGLY_CASES row 11. No anchor means EVIDENCE_MISSING, never a commitment."""
+async def test_missing_transcript_anchor_is_not_affirmed() -> None:
+    """UGLY_CASES row 11. A verbal yes that cannot bind to a turn stays unconfirmed."""
     store, sender = InMemoryOperationStore(), _Sender()
 
     result = await _settle(store, sender, _proposal(transcript_anchor_ms=None))
@@ -216,3 +216,41 @@ async def test_single_award_under_race() -> None:
     accepted = [o for o in store.offers.values() if o["status"] == "accepted"]
     assert len(accepted) == 1
     assert second.state is not ChainState.COMMITTED
+
+
+@pytest.mark.asyncio
+async def test_ambiguous_commitment_email_is_not_resent() -> None:
+    """UGLY_CASES row 10. A timeout is not a failure and not a success — it is unknown.
+
+    The send may have gone through. Retrying could deliver a second commitment to a carrier
+    who already has one, and treating it as delivered would claim a commitment that was
+    never verified. Exactly one attempt, and the commitment does not count.
+    """
+    store = InMemoryOperationStore()
+
+    class _Timeout(_Sender):
+        def __init__(self) -> None:
+            super().__init__(RecapDeliveryStatus.FAILED)
+            self.attempts = 0
+
+        async def send(self, recap: Recap, to_email: str) -> RecapDelivery:
+            self.attempts += 1
+            return RecapDelivery(
+                call_sid=recap.call_sid,
+                status=RecapDeliveryStatus.FAILED,
+                to_email=to_email,
+                error="timeout after dispatch: delivery unknown",
+            )
+
+    sender = _Timeout()
+    result = await _settle(store, sender)
+
+    assert sender.attempts == 1, "an unknown outcome must never be auto-resent"
+    assert not result.committed
+    states = [t["to_state"] for t in await store.list_transitions(result.commitment_id or "")]
+    assert "COMMITTED" not in states
+    # The reason is carried through, so a human can see *why* it is not committed.
+    assert any(
+        "unknown" in (t["reason"] or "")
+        for t in await store.list_transitions(result.commitment_id or "")
+    )
