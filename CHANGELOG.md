@@ -56,8 +56,20 @@ inference), scores them with an explainable formula, drafts the confirmation ema
 at `chain_state='VERBAL'` (+ `commitment_transitions`). It is NOT the live call path and
 never reaches `COMMITTED` (the DB evidence trigger and the real chain still gate that).
 Dry-run by default; refuses to award a carrier whose recap has no confirmed price.
-→ Affects: nobody yet — standalone script, opt-in. Note it writes to the advanced
-  drayage schema (`offers`, `commitments`, …) which lives on `main`, not on this branch.
+→ Affects: nobody yet — standalone, opt-in. It writes to the advanced drayage schema
+  (`offers`, `commitments`, …) that the deployed Supabase project already has; those
+  tables are not in `backend/app/` or the migrations on this branch yet.
+
+## 2026-08-29T18:29-05:00 · domain, policy, tools, repo, supabase · Codex
+Added the audited handoff contract: deterministic authorization, one idempotent request
+per call, append-only lifecycle records, and the corresponding Supabase migration.
+→ Affects: telephony and dashboard. Apply the new migration before using persisted handoffs.
+
+## 2026-08-29T18:09-05 · voice, config · Codex
+Raised the local barge-in gate from 900 RMS for 120 ms to 1800 RMS for 300 ms and added
+a regression test for sustained moderate background noise.
+→ Affects: anyone testing calls. Restart the backend after pulling; tune the two
+  `VAD_BARGE_IN_*` variables only if the actual phone line still needs calibration.
 
 ## 2026-08-29T17:27-05 · config, repo, supabase · Codex
 Replaced the legacy `SUPABASE_SERVICE_ROLE_KEY` configuration with
@@ -79,6 +91,19 @@ Twilio closes the call. Report output contains audio-anchored agreement candidat
 it does not write commitments or send any message.
 → Affects: dashboard and policy. Read `/calls/{call_sid}/transcript`, `/recap`, and
   `/brief`; a later deterministic policy step must validate candidates before commitment.
+
+## 2026-08-29T17:36-0500 · agent, domain · Nacho/claude
+The system prompt is no longer one hardcoded string. `domain.CompanyProfile` (new — the
+dashboard's pre-registration) and `agent.CallContext` compose it per call:
+`build_system_prompt(profile, context)`, `build_greeting(...)`, `recovery_line(...)`,
+`escalation_line(...)`. Four phases — RFQ, AWARD, RENEGOTIATION, INBOUND — each get their
+own block over a shared core. `build_agent(..., instructions=...)` is keyword-only and
+defaults to the demo lane, so nothing downstream changed yet. The mandate ceiling and
+target are now rendered into the prompt, marked never-say: a deliberate trade, see
+DECISION_LOG D8; `policy/` is still the only thing that authorizes anything.
+→ Affects: whoever wires `voice/session.py` to a real operation — pass the composed
+prompt and greeting instead of the module-level `SYSTEM_PROMPT` / `GREETING`. Físico:
+`domain/Operation` and `domain/Mandate` should map *into* `CallContext`, not replace it.
 
 ## 2026-08-29T14:25-0500 · agent, voice · Nacho/claude
 `build_agent(model, api_key, tools=None)` — the key is now a required argument. It has to

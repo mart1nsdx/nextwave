@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -21,6 +22,28 @@ class CallStatus(StrEnum):
     ACTIVE = "active"
     ENDED = "ended"
     FAILED = "failed"
+
+
+class HandoffReason(StrEnum):
+    """Deterministic categories that may justify involving a human."""
+
+    DIRECT_REQUEST = "direct_request"
+    OUTSIDE_MANDATE = "outside_mandate"
+    AMBIGUOUS_CRITICAL_TERM = "ambiguous_critical_term"
+    CONFLICTING_INFORMATION = "conflicting_information"
+    POLICY_FAILURE = "policy_failure"
+    TECHNICAL_FAILURE = "technical_failure"
+
+
+class HandoffStatus(StrEnum):
+    PROPOSED = "proposed"
+    AUTHORIZED = "authorized"
+    CALLER_ON_HOLD = "caller_on_hold"
+    HUMAN_DIALING = "human_dialing"
+    CONNECTED = "connected"
+    DECLINED = "declined"
+    FAILED = "failed"
+    COMPLETED = "completed"
 
 
 class TranscriptTrack(StrEnum):
@@ -47,6 +70,30 @@ class CallCase(BaseModel):
     started_at: datetime | None = None
     ended_at: datetime | None = None
     metadata: dict[str, str] = Field(default_factory=dict)
+
+
+class HandoffRequest(BaseModel):
+    """An auditable request to transfer a live call, never a commitment."""
+
+    handoff_id: UUID
+    call_sid: str
+    reason: HandoffReason
+    evidence_offset_ms: int = Field(ge=0)
+    note: str = Field(min_length=1, max_length=500)
+    status: HandoffStatus = HandoffStatus.PROPOSED
+    conference_name: str | None = None
+    operator_call_sid: str | None = None
+    created_at: datetime | None = None
+
+
+class HandoffEvent(BaseModel):
+    """Append-only lifecycle evidence for a HandoffRequest."""
+
+    event_key: str
+    handoff_id: UUID
+    status: HandoffStatus
+    detail: str | None = None
+    created_at: datetime | None = None
 
 
 class TranscriptEvent(BaseModel):

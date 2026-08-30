@@ -24,6 +24,8 @@ wording the agent uses to get there.
 | 12 | Duplicate webhook | Twilio redelivers the same event | Second delivery is a no-op | `test_webhook_redelivery_is_idempotent` |
 | 13 | Policy service unreachable | Internal failure mid-decision | Fail closed — hold or escalate. Never degrade into permission | `test_policy_failure_fails_closed` |
 | 14 | Two carriers accept | Both confirm during `AWARDING` | Exactly one award. Two open bookings is the worst outcome | `test_single_award_under_race` |
+| 15 | Direct request for a person | “Quiero hablar con una persona” | One `DIRECT_REQUEST` handoff; no further negotiation or commitment | `test_direct_handoff_request_is_idempotent` |
+| 16 | Human unavailable | Escalation number busy, rejects or does not answer | `HANDOFF_FAILED`; carrier is never silently left on hold | `test_handoff_failure_closes_without_commitment` |
 
 Rows 1–7 come straight from `CHALLENGE.md` (§3 and §5) — they are what the judge is
 expected to try. Rows 8–14 are the failure modes the invariants in `AGENTS.md` exist to

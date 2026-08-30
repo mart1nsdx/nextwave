@@ -5,7 +5,7 @@ lets us send audio back and — crucially — send `clear` to cut the agent off 
 when the counterparty barges in. <Start> is one-way and could not do that.
 """
 
-from twilio.twiml.voice_response import Connect, VoiceResponse
+from twilio.twiml.voice_response import Connect, Dial, Gather, Say, VoiceResponse
 
 
 def connect_stream(websocket_url: str) -> str:
@@ -44,3 +44,76 @@ def websocket_url(public_base_url: str, path: str = "/twilio/media") -> str:
     elif base.startswith("http://"):
         base = "ws://" + base[len("http://") :]
     return base + path
+
+
+def caller_hold_conference(conference_name: str, wait_url: str, status_url: str) -> str:
+    """Move the caller out of the AI stream and into a moderated conference."""
+
+    response = VoiceResponse()
+    dial = Dial()
+    dial.conference(
+        conference_name,
+        start_conference_on_enter=False,
+        end_conference_on_exit=True,
+        wait_url=wait_url,
+        status_callback=status_url,
+        status_callback_event="start end join leave",
+        participant_label="carrier",
+        beep=False,
+        max_participants=2,
+    )
+    response.append(dial)
+    return str(response)
+
+
+def operator_brief(accept_url: str, message: str) -> str:
+    """Private operator briefing; only an explicit DTMF 1 joins the carrier."""
+
+    response = VoiceResponse()
+    gather = Gather(input="dtmf", num_digits=1, timeout=10, action=accept_url, method="POST")
+    gather.append(Say(message, language="es-MX"))
+    response.append(gather)
+    response.say("No recibimos confirmación. Esta solicitud se cerrará.", language="es-MX")
+    response.hangup()
+    return str(response)
+
+
+def operator_join_conference(conference_name: str, status_url: str) -> str:
+    """Join the accepting human and start the moderated conference."""
+
+    response = VoiceResponse()
+    dial = Dial()
+    dial.conference(
+        conference_name,
+        start_conference_on_enter=True,
+        end_conference_on_exit=True,
+        status_callback=status_url,
+        status_callback_event="start end join leave",
+        participant_label="operator",
+        beep="onEnter",
+        max_participants=2,
+    )
+    response.append(dial)
+    return str(response)
+
+
+def unavailable_handoff() -> str:
+    """Do not strand a carrier on hold when a person cannot accept the call."""
+
+    response = VoiceResponse()
+    response.say(
+        "No logramos conectar con una persona en este momento. Un miembro del equipo le devolverá "
+        "la llamada. Gracias.",
+        language="es-MX",
+    )
+    response.hangup()
+    return str(response)
+
+
+def handoff_wait(wait_url: str) -> str:
+    """A short loop while the configured operator is being called."""
+
+    response = VoiceResponse()
+    response.say("Un momento mientras le conectamos con una persona.", language="es-MX")
+    response.redirect(wait_url, method="POST")
+    return str(response)

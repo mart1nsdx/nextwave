@@ -54,8 +54,8 @@ class Settings(BaseSettings):
     # Barge-in (did they *start* while we were talking?) is local, because a round-trip
     # here means the agent talks over the counterparty for a third of a second.
     vad_barge_in_enabled: bool = True
-    vad_barge_in_rms_threshold: float = 900.0  # int16 RMS; calibrate against a real line
-    vad_barge_in_min_ms: int = 120  # consecutive voiced audio; filters coughs and line noise
+    vad_barge_in_rms_threshold: float = 1800.0  # int16 RMS; rejects typical line noise
+    vad_barge_in_min_ms: int = 300  # sustained speech, not a burst of exterior noise
     vad_min_silence_before_reply_ms: int = 250
 
     # --- Escalation and callbacks ---
