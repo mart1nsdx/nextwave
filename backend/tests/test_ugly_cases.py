@@ -1,14 +1,18 @@
 """Hostile side-effect and replay cases at the trusted tool boundary."""
 
+import asyncio
+from collections.abc import AsyncIterator, Sequence
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
 
 import pytest
+from agents import TResponseInputItem
 
 from app.domain import CommitmentMode, CostComponent, Mandate, Offer, QuoteProposal, ReasonCode
-from app.domain.models import HandoffReason
-from app.repo import InMemoryOperationRepository
+from app.domain.models import CallDirection, HandoffReason, Speaker, TranscriptTrack
+from app.ledger import EvidenceLedger
+from app.repo import InMemoryOperationRepository, InMemoryTranscriptStore
 from app.tools import CommitmentCoordinator, ProposalTools, ToolStatus, detected_handoff_reason
 from app.tools.conversation_guard import (
     ESCALATION_RESPONSE,
@@ -16,9 +20,15 @@ from app.tools.conversation_guard import (
     NON_BINDING_RESPONSE,
     build_demo_guard,
 )
+from app.voice.session import VoiceSession
+from app.voice.simline import SimLine
+from app.voice.stt.fake import FakeStt, ScriptedUtterance
+from app.voice.tts.fake import FakeTts
+from app.voice.vad import VadSettings
 from scripts.seed_demo import DEMO_CARRIERS, DEMO_MANDATE_ROW, DEMO_OPERATION_ID, seed
 
 NOW = datetime(2026, 8, 29, 18, 0, tzinfo=UTC)
+FIRST_CLAUSE = "Let me confirm that detail."
 
 
 def _mandate(mode: CommitmentMode = CommitmentMode.AUTONOMOUS, version: int = 1) -> Mandate:
@@ -237,3 +247,79 @@ async def test_price_change_creates_new_proposal() -> None:
     # Each is anchored to its own moment in the transcript, so the conflict is auditable.
     assert by_id["P-8500"].transcript_anchor_ms == 4200
     assert by_id["P-9200"].transcript_anchor_ms == 61000
+
+
+class _StallingThinker:
+    """Says one clause, then never finishes. Only a cancel can end this turn."""
+
+    async def reply(self, history: Sequence[TResponseInputItem]) -> AsyncIterator[str]:
+        yield FIRST_CLAUSE
+        await asyncio.Event().wait()
+        yield "this must never be heard"
+
+
+async def test_barge_in_preserves_context() -> None:
+    """Ugly case 9. The carrier interrupts mid-sentence.
+
+    The agent stops talking and keeps the conversation — and, the part that was missing,
+    the half-turn it did say reaches the ledger marked ``interrupted``. A barge-in reply
+    that existed on the phone line but not in the persisted transcript is evidence that
+    silently does not exist, and barge-in is precisely what a judge will do.
+
+    What is recorded is what was handed to the synthesizer and never more, so the agent
+    can never afterwards be shown claiming something the other side never heard.
+    """
+    store = InMemoryTranscriptStore()
+    await store.open_case("CA-BARGE", CallDirection.OUTBOUND)
+    ledger = EvidenceLedger(store)
+
+    async def sink(
+        call_sid: str,
+        track: TranscriptTrack,
+        speaker: Speaker,
+        *,
+        sequence_number: int,
+        audio_offset_ms: int,
+        text: str,
+        interrupted: bool = False,
+    ) -> None:
+        await ledger.record_segment(
+            "CA-BARGE",
+            track=track,
+            sequence_number=sequence_number,
+            audio_offset_ms=audio_offset_ms,
+            text=text,
+            is_final=True,
+            speaker=speaker,
+            interrupted=interrupted,
+        )
+
+    script = [
+        ScriptedUtterance("necesito un precio", 100, 300),
+        ScriptedUtterance("no espera", 500, 900),  # starts while the agent is talking
+    ]
+    session = VoiceSession(
+        stt=FakeStt(script),
+        tts=FakeTts(),
+        reasoner=_StallingThinker(),
+        vad=VadSettings(barge_in_min_ms=120),
+        greeting="Buenas.",
+        latency_evidence="SIMULATED_TEST",
+        on_final_transcript=sink,
+    )
+    line = SimLine(script, tail_ms=400, pace_s=0)
+    await session.run(line, line)
+
+    events = await store.list_events("CA-BARGE")
+    agent_turns = [e for e in events if e.speaker == Speaker.AGENT]
+    assert agent_turns, "an interrupted turn must reach the ledger, not only in-memory history"
+    assert agent_turns[0].interrupted is True
+    assert agent_turns[0].text == FIRST_CLAUSE
+    assert not any("must never be heard" in e.text for e in events)
+
+    # Context kept: both sides of the interruption are still in the transcript, in order.
+    assert [e.text for e in events if e.speaker == Speaker.CALLER] == [
+        "necesito un precio",
+        "no espera",
+    ]
+    assert line.clears >= 1, "barge-in must drop the audio already queued on the line"

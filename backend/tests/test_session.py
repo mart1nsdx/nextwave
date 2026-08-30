@@ -7,12 +7,14 @@ things the other side never heard.
 
 import asyncio
 from collections.abc import AsyncIterator, Sequence
+from dataclasses import dataclass
 
 from agents import TResponseInputItem
 
 from app.agent import RECOVERY_LINE
+from app.domain.models import Speaker, TranscriptTrack
 from app.voice.llm import Thinker
-from app.voice.session import VoiceSession
+from app.voice.session import FinalTranscriptSink, VoiceSession
 from app.voice.simline import SimLine
 from app.voice.stt.fake import FakeStt, ScriptedUtterance
 from app.voice.tts.fake import FakeTts
@@ -123,24 +125,82 @@ async def test_interrupted_turn_records_only_audio_that_started() -> None:
     assert interrupted[0].end_to_end_first_audio_ms is not None
 
 
-async def test_final_transcripts_include_both_call_sides_for_post_call_evidence() -> None:
+@dataclass(frozen=True, slots=True)
+class Recorded:
+    track: str
+    speaker: str
+    sequence_number: int
+    audio_offset_ms: int
+    text: str
+    interrupted: bool
+
+
+def _recording_sink(into: list[Recorded]) -> FinalTranscriptSink:
+    async def sink(
+        call_sid: str,
+        track: TranscriptTrack,
+        speaker: Speaker,
+        *,
+        sequence_number: int,
+        audio_offset_ms: int,
+        text: str,
+        interrupted: bool = False,
+    ) -> None:
+        into.append(
+            Recorded(str(track), str(speaker), sequence_number, audio_offset_ms, text, interrupted)
+        )
+
+    return sink
+
+
+async def _run_one_turn(recorded: list[Recorded]) -> None:
     script = [ScriptedUtterance("nueve mil pesos", 100, 400)]
-    recorded: list[tuple[str, str, int, str]] = []
-
-    async def sink(call_id: str, track: object, speaker: object, offset: int, text: str) -> None:
-        recorded.append((str(track), str(speaker), offset, text))
-
     session = VoiceSession(
         stt=FakeStt(script),
         tts=FakeTts(),
         reasoner=OneLinerThinker(),
         vad=VadSettings(barge_in_min_ms=120),
         greeting="Buenas.",
-        on_final_transcript=sink,
+        on_final_transcript=_recording_sink(recorded),
     )
     source = SimLine(script, tail_ms=400, pace_s=0)
     sink_line = SimLine(script, tail_ms=400, pace_s=0)
     await session.run(source, sink_line)
 
-    assert ("inbound", "caller", 100, "nueve mil pesos") in recorded
-    assert any(track == "outbound" and speaker == "agent" for track, speaker, _, _ in recorded)
+
+async def test_final_transcripts_include_both_call_sides_for_post_call_evidence() -> None:
+    recorded: list[Recorded] = []
+    await _run_one_turn(recorded)
+
+    assert any(
+        r.track == "inbound"
+        and r.speaker == "caller"
+        and r.audio_offset_ms == 100
+        and r.text == "nueve mil pesos"
+        for r in recorded
+    )
+    assert any(r.track == "outbound" and r.speaker == "agent" for r in recorded)
+    # The counter belongs to the session, not to a dict in the app factory: one call,
+    # one sequence, starting at 1 and never re-seeded from a database read.
+    assert [r.sequence_number for r in recorded] == list(range(1, len(recorded) + 1))
+
+
+async def test_agent_turn_is_anchored_after_the_utterance_it_answers() -> None:
+    """The challenge requires a commitment to link to the moment it was agreed.
+
+    The agent's own line used to be persisted at the counterparty's UtteranceEnd offset —
+    an instant *before* the agent had said anything at all, and one instant for a whole
+    multi-clause reply. It must now sit at the transport's stream position at the moment
+    the reply's first audio went out.
+    """
+    recorded: list[Recorded] = []
+    await _run_one_turn(recorded)
+
+    utterance_end_ms = 400  # ScriptedUtterance("nueve mil pesos", 100, 400)
+    agent = [r for r in recorded if r.speaker == "agent"]
+    assert agent, "the agent turn must be recorded"
+    assert agent[0].audio_offset_ms > utterance_end_ms, (
+        f"agent turn anchored at {agent[0].audio_offset_ms} ms, "
+        f"which is not after the utterance it answers ({utterance_end_ms} ms)"
+    )
+    assert not agent[0].interrupted
