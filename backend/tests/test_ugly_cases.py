@@ -6,7 +6,17 @@ from uuid import UUID
 
 import pytest
 
-from app.domain import CommitmentMode, CostComponent, Mandate, Offer, QuoteProposal, ReasonCode
+from app.domain import (
+    AgreementCandidate,
+    CommitmentMode,
+    CostComponent,
+    Mandate,
+    Offer,
+    PolicyOutcome,
+    QuoteProposal,
+    ReasonCode,
+    anchor_is_evidenced,
+)
 from app.domain.models import HandoffReason
 from app.repo import InMemoryOperationRepository
 from app.tools import CommitmentCoordinator, ProposalTools, ToolStatus, detected_handoff_reason
@@ -54,6 +64,17 @@ def _proposal(**changes: object) -> QuoteProposal:
     }
     values.update(changes)
     return QuoteProposal(**values)  # type: ignore[arg-type]
+
+
+# The offsets the call actually produced, as the ledger would report them. Anything the
+# extractor emits that is not in here was not heard; it was generated.
+_LEDGER_OFFSETS = frozenset({4200, 61000})
+
+
+def _tools_with(proposal: QuoteProposal) -> ProposalTools:
+    tools = ProposalTools()
+    tools.propose_quote(proposal, now=NOW)
+    return tools
 
 
 def test_boss_already_approved_is_outside_mandate() -> None:
@@ -185,6 +206,42 @@ def test_creative_binding_language_is_mediated() -> None:
         NON_BINDING_RESPONSE,
         True,
     )
+
+
+def test_missing_transcript_anchor_is_not_affirmed() -> None:
+    """Ugly case 11. A yes that binds to no recap turn is EVIDENCE_MISSING, not a candidate.
+
+    Two halves, because there are two ways the anchor can be absent. Policy rejects an
+    explicit ``None``; the domain predicate is what lets an extractor say ``None`` at all.
+    """
+    proposal = _proposal(transcript_anchor_ms=None)
+    decision = CommitmentCoordinator(_tools_with(proposal)).evaluate_all(
+        _mandate(), {}, now=NOW
+    )[0][1]
+    assert decision.outcome is PolicyOutcome.DENY
+    assert decision.reason is ReasonCode.EVIDENCE_MISSING
+
+    assert anchor_is_evidenced(None, _LEDGER_OFFSETS) is False
+    assert AgreementCandidate(terms="8,500 all-in", audio_offset_ms=None).audio_offset_ms is None
+
+
+def test_zero_transcript_anchor_is_not_affirmed() -> None:
+    """Ugly case 21. A required integer forces the extractor to invent one; 0 is what it picks.
+
+    ``0`` is a legal offset, so nothing about the value itself is suspicious — the only
+    thing that separates a real anchor from a fabricated one is whether a persisted
+    transcript event actually carries it (AGENTS.md invariant #8).
+    """
+    assert 0 not in _LEDGER_OFFSETS
+    assert anchor_is_evidenced(0, _LEDGER_OFFSETS) is False
+    # And a 0 that the call really did produce still passes, so this is not a blanket ban.
+    assert anchor_is_evidenced(0, frozenset({0, 4200})) is True
+
+
+def test_fabricated_transcript_anchor_is_not_affirmed() -> None:
+    """Ugly case 22. The failure mode is 'model invents a plausible number', not just '0'."""
+    assert anchor_is_evidenced(12345, _LEDGER_OFFSETS) is False
+    assert anchor_is_evidenced(4200, _LEDGER_OFFSETS) is True
 
 
 def test_direct_handoff_request_is_idempotent() -> None:
