@@ -182,3 +182,34 @@ is a format check in the same class as the E.164 regex on phone numbers — dete
 authority, refuses but never grants.
 
 **Cost:** ~25 lines of plpgsql. Verified against an independent Python implementation.
+
+## D-DB-05 — `commitment_transitions` es tabla propia, no parte de `decisions`
+
+**Decidido:** la cadena de estados de un compromiso vive en su propia tabla append-only, con
+una llave foránea opcional hacia la decisión que autorizó cada paso.
+
+**Le ganó a:** fusionarla dentro de `decisions` con una columna `resulting_state`, y también
+a guardarla como arreglo JSONB dentro de `commitments`.
+
+**Por qué:**
+
+1. **La cardinalidad no cuadra.** Una operación con tres carriers produce ~20 decisiones y 4
+   transiciones. Una sola decisión provoca un cambio de estado; las otras tres transiciones
+   no tienen decisión detrás — las disparan el webhook de Resend (`RECAP_SENT`), la
+   asignación de unidad (`RESOURCED`) y el gate-out (`EXECUTED`). Fusionadas dan una tabla
+   donde la mayoría de filas tiene nulo en una mitad o en la otra.
+2. **Los escritores son distintos.** `decisions` la escribe `policy/` de forma síncrona
+   durante la llamada; las transiciones las escriben `notify/` y `telephony/` horas después,
+   desde webhooks. Distinta razón para cambiar, distinto momento.
+3. **La razón de fondo:** una decisión dice *"esto sería permitido"*; una transición dice
+   *"esto pasó"*. `allow` no significa comprometido — la política puede autorizar y el
+   compromiso quedarse en `VERBAL` para siempre porque el recap nunca se entregó. En una
+   sola fila se vuelve natural escribir código que trate ambas como equivalentes, que es el
+   bug exacto que la arquitectura existe para prevenir.
+
+**Costo aceptado:** una tabla más que en el mínimo teórico. Se paga porque el momento "el sí
+verbal nunca se volvió reserva porque el recap falló" está en el guion del demo, y queremos
+que sea una consulta directa y no un `jsonb->>`.
+
+**Cambiaría si:** el demo dejara de mostrar la cadena. En ese caso una transición es un
+evento y cabe en `events` con `type='commitment.state_changed'` — no en `decisions`.
