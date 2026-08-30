@@ -25,6 +25,28 @@ invented timestamps is worse than no log, because the ordering lies silently.
 
 ---
 
+## 2026-08-29T20:46-0500 · market/config/docs · Diego/claude
+`market/` is no longer empty. `Rfq` dials N carriers concurrently, holds their offers
+while the market is OPEN, and awards exactly once in AWARDING — the phase machine *is*
+invariant #5, so a late offer cannot change a decision already being made and a second
+award has no phase to run in. `compare()` returns the auditable table with a reason per
+carrier, ranked by the same `policy.select_best` that awards, so the table can never
+disagree with the outcome. Dialling is injected, not imported: `market/` may not reach
+`telephony/`.
+That unblocked UGLY_CASES row 4 (flat refusal), so **all 20 rows now have a test**, and a
+new check fails the build if the table ever names one that does not exist.
+Also: `.env` at the repo root was invisible to `cd backend && uvicorn` — `env_file=".env"`
+resolves against the working directory — so every key read as empty. Fixed, both locations
+read. `.env.example` had drifted eleven keys and still documented `SUPABASE_SERVICE_ROLE_KEY`;
+rewritten, with a test that fails when it disagrees with `config.py` in either direction.
+Three mermaid architecture diagrams in `docs/ARCHITECTURE.md`, verified to render, and a
+README carrying the CHALLENGE.md §3 capability table with honest status.
+Suite 114 -> 131, ruff and mypy clean.
+→ Affects: everyone. The env fix changes whether your server sees any configuration at
+  all — if things mysteriously worked only from the repo root before, this is why. Recaps
+  still need SENDGRID_API_KEY / RECAP_FROM_EMAIL / RECAP_TO_EMAIL, which are set in
+  neither .env today, so commitments will stall at RECAP_FAILED until they are.
+
 ## 2026-08-29T20:28-0500 · domain/repo/tools/main/telephony · Diego/claude
 Closed the commitment chain. Nothing wrote to `offers`, `policy_decisions`, `commitments`,
 `evidence` or `call_recap_deliveries`: the live path reached "recap generated" and stopped

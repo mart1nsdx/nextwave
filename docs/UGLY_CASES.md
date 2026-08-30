@@ -37,20 +37,15 @@ prevent; they are less likely to be exercised live, and more likely to be fatal 
 
 ## Where each row is tested
 
-The names in the last column are the contract. 19 of the 20 rows have a test carrying that
-exact name; `backend/tests/` is checked against this table, so a renamed test shows up as a
-row with no coverage rather than as silence.
+The names in the last column are the contract, and
+`backend/tests/test_ugly_cases_coverage.py` fails the build if this table ever names a test
+that does not exist. **All 20 rows are covered.**
 
 | Rows | File |
 | --- | --- |
 | 1, 12, 15–18, 20 | `backend/tests/test_ugly_cases.py` |
 | 2, 3, 6, 7, 8, 9, 13 | `backend/tests/test_ugly_cases_table.py` |
+| 4 | `backend/tests/test_market.py` |
 | 5, 10, 11, 14 | `backend/tests/test_commitment_chain.py` |
 | 19 | `backend/tests/test_handoff.py` |
 | 12, for the recording hook | `backend/tests/test_recording.py` |
-
-**Row 4 (flat refusal ends the RFQ cleanly) has no test and no implementation.** It needs
-`market/`, which is still an empty package: there is no RFQ for a refusal to close, and no
-carrier list to mark anyone unavailable in. It is named here rather than covered by a test
-that asserts nothing — a green row for behaviour that does not exist is worse than an
-honest gap.

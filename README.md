@@ -35,11 +35,12 @@ From `docs/CHALLENGE.md` §3. Status is what runs today, not what is planned.
 | Every commitment linked to its audio timestamp | ✅ | `evidence.audio_offset_ms`, recording via `telephony/recording.py` |
 | Call brief of actions and mentions | ✅ | `agent/recap.py` |
 | Conversation and system stay consistent | ⚠️ | Agent reads context; what it hears does not yet update the operation |
-| Ugly cases, escalate mid-call without hanging up | ✅ | `telephony/handoff.py` (Twilio Conference), 19 of 20 `docs/UGLY_CASES.md` rows tested |
-| Three carriers in parallel, auditable comparison | ❌ | `policy.select_best` ranks deterministically, but `market/` is empty — today the award runs as `scripts/award_from_recaps.py`, by hand |
+| Ugly cases, escalate mid-call without hanging up | ✅ | `telephony/handoff.py` (Twilio Conference), all 20 `docs/UGLY_CASES.md` rows tested |
+| Three carriers in parallel, auditable comparison | ✅ | `market/rfq.py` — concurrent dial, RFQ and AWARD as separate phases, one award, comparison with a reason per carrier |
 
-Two rows are honestly ⚠️ and one is ❌. `docs/UGLY_CASES.md` names the one row (flat
-refusal) with no test, and says why.
+Two rows are honestly ⚠️: the agent negotiates on an inbound call but does not yet write
+the result back to the operation. Everything else runs. All 20 rows of
+`docs/UGLY_CASES.md` have a test, and a check fails the build if that stops being true.
 
 ## Reading order
 
@@ -76,7 +77,7 @@ changes on every ngrok restart** and inbound calls 404 in silence until it is re
 
 ```bash
 cd backend
-uv run pytest                                          # 117 tests, no network, no PSTN
+uv run pytest                                          # 131 tests, no network, no PSTN
 uv run ruff check . && uv run mypy app/
 uv run python -m scripts.sim_call --scenario boss_approved   # a hostile call, no cost
 ```
