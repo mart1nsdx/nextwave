@@ -25,6 +25,24 @@ invented timestamps is worse than no log, because the ordering lies silently.
 
 ---
 
+## 2026-08-29T20:28-0500 · domain/repo/tools/main/telephony · Diego/claude
+Closed the commitment chain. Nothing wrote to `offers`, `policy_decisions`, `commitments`,
+`evidence` or `call_recap_deliveries`: the live path reached "recap generated" and stopped
+one step short of the two things the brief actually asks for. New `repo/operations.py`
+(Supabase + in-memory twin) and `tools/chain.py` run
+evaluate -> decision row -> VERBAL -> recap sent -> RECAP_SENT -> COMMITTED, writing the
+refusals too. `RecapService` now actually sends and records delivery; an unconfigured
+mailer returns FAILED rather than a quiet no-op, so a commitment stalls visibly instead of
+passing as verified. Recording starts over REST (`<Connect><Stream>` is terminal TwiML, so
+`<Record>` never runs) and lands in `recordings`, which means an audio offset finally
+points at audio somebody can play. Ugly cases: 19 of 20 rows now have a test carrying the
+row's exact name; row 4 is documented as an open gap because it needs `market/`.
+Suite 92 -> 112, ruff and mypy clean.
+→ Affects: everyone. `main.py` gained a `recap_sender` argument, `TranscriptStore` gained
+  `record_recording`/`list_recordings`, and `RecapService.__init__` now takes a sender —
+  rebase before touching the composition root. Sending is live: set `RECAP_TO_EMAIL` and
+  `SENDGRID_API_KEY` or every recap records as FAILED by design.
+
 ## 2026-08-29T20:14-0500 · integration · Diego/claude
 Integrated the three diverged lines of work onto one branch off `main`: `origin/martin`
 (the six policy/evidence/drayage migrations, `seed.sql`, `schema.dbml`) and
