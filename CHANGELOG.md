@@ -60,6 +60,13 @@ which ones have code behind them.
   on `main` today was building against tables and an authorization layer it could not see.
   Rebase onto this before continuing.
 
+## 2026-08-29T19:50-0500 · scripts/policy/security · Person 2/Codex
+Integrated main's recap-ranking workflow as analysis-only and fail-closed its `--commit`, `--sms`,
+and `--force-incomplete` modes until typed proposals pass deterministic policy and a one-use claim.
+Converted its carrier-facing email/SMS drafts to English and added boundary regression tests.
+→ Affects: award/demo owners. Dry-run ranking and RFQ scoping remain; do not re-enable database writes
+  or carrier notification directly from model-extracted recap output.
+
 ## 2026-08-29T19:47-0500 · integration/voice/tools/policy/evidence/handoff · Person 2/Codex
 Merged current main into the Person 2 branch and integrated deterministic conversational mediation
 with main's persisted transcript/recap callbacks, audited handoff lifecycle, updated VAD, configuration,
