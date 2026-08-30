@@ -25,6 +25,13 @@ invented timestamps is worse than no log, because the ordering lies silently.
 
 ---
 
+## 2026-08-29T19:12-05 · scripts · Martin/claude
+`award_from_recaps.py --commit --sms` now texts the negotiation specs (carrier, container,
+tarifa, ventana, condiciones) to the awarded carrier's `counterparty_contacts.phone` via
+Twilio — and to no one else. `--sms` requires `--commit`; a Twilio/credential failure is
+reported, never fatal. The SMS body + result land in the JSON artifact.
+→ Affects: nobody. Uses the existing TWILIO_* creds in backend/.env.
+
 ## 2026-08-29T19:03-05 · scripts · Martin/claude
 `award_from_recaps.py` now scopes strictly to one container / RFQ: it only compares
 carrier calls tied to that RFQ and excludes any other recap as noise. A call is tied by

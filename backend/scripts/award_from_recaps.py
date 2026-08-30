@@ -3,6 +3,7 @@
     cd backend
     uv run python -m scripts.award_from_recaps --operation-ref OP-MZO-0001
     uv run python -m scripts.award_from_recaps --operation-ref OP-MZO-0001 --commit
+    uv run python -m scripts.award_from_recaps --operation-ref OP-MZO-0001 --commit --sms
 
 This is deliberately NOT the live call path. Nothing here decides anything during a
 call. It runs afterwards, once every carrier has been phoned and every call has a
@@ -15,6 +16,8 @@ call. It runs afterwards, once every carrier has been phoned and every call has 
                               ->  pick the best one
                               ->  draft the confirmation email to that carrier's contact
                               ->  (with --commit) write the offer / participant / commitment rows
+                              ->  (with --commit --sms) text the negotiation specs to the
+                                  awarded carrier ONLY — nobody else is notified
 
 A call is tied to the RFQ by `call_cases.metadata->>'rfq_id'`, by an existing `offers`
 row, or by `--assign CALL_SID=COUNTERPARTY_ID` (which --commit then saves to
@@ -288,6 +291,15 @@ def resolve_carriers(
 
 
 # --- email -----------------------------------------------------------------
+def _pretty_dt(iso: str | None, fallback: str) -> str:
+    if not iso:
+        return fallback
+    try:
+        return datetime.fromisoformat(iso.replace("Z", "+00:00")).strftime("%d/%m/%Y %H:%M")
+    except ValueError:
+        return iso
+
+
 def email_template(op_ref: str, container: str, winner: Carrier) -> dict[str, str]:
     q = winner.quote or ExtractedQuote()
     price = (
@@ -295,7 +307,7 @@ def email_template(op_ref: str, container: str, winner: Carrier) -> dict[str, st
         if q.price_amount is not None and q.price_currency
         else "(por confirmar en la llamada)"
     )
-    window = q.pickup_window_start or "(por confirmar)"
+    window = _pretty_dt(q.pickup_window_start, "(por confirmar)")
     who = winner.contact_name or "equipo de despacho"
     body = f"""Estimado/a {who} ({winner.name}),
 
@@ -324,6 +336,44 @@ Quedamos atentos.
         ),
         "body": body,
     }
+
+
+def sms_body(op_ref: str, container: str, winner: Carrier) -> str:
+    """Short SMS with the negotiation specs. Only the awarded carrier gets this."""
+    q = winner.quote or ExtractedQuote()
+    price = (
+        f"{q.price_amount:,.0f} {q.price_currency}"
+        if q.price_amount is not None and q.price_currency
+        else "por confirmar"
+    )
+    window = _pretty_dt(q.pickup_window_start, "por confirmar")
+    conds = "; ".join(q.conditions)
+    msg = (
+        f"{winner.name}: seleccionados para contenedor {container} ({op_ref}), "
+        f"Contecon Manzanillo -> Guadalajara. Tarifa: {price}. Recogida: {window}."
+    )
+    if conds:
+        msg += f" Condiciones: {conds}."
+    msg += " Responda SI para confirmar. Aun no es adjudicacion en firme."
+    return msg
+
+
+def send_sms(to_phone: str, body: str) -> dict[str, str]:
+    """Send one SMS via Twilio. Returns {status, sid|error}."""
+    s = get_settings()
+    if not (s.twilio_account_sid and s.twilio_auth_token and s.twilio_phone_number):
+        return {"status": "skipped", "error": "Twilio credentials not set in backend/.env"}
+    if not to_phone:
+        return {"status": "skipped", "error": "the awarded carrier's contact has no phone"}
+    from twilio.rest import Client
+
+    try:
+        msg = Client(s.twilio_account_sid, s.twilio_auth_token).messages.create(
+            to=to_phone, from_=s.twilio_phone_number, body=body
+        )
+    except Exception as exc:  # noqa: BLE001 — surface any Twilio error, do not crash the award
+        return {"status": "failed", "error": str(exc)[:300]}
+    return {"status": "sent", "sid": str(msg.sid)}
 
 
 # --- report + writes ---------------------------------------------------------
@@ -365,7 +415,7 @@ def do_writes(
     reason: str,
     fx: dict[str, float],
     commit: bool,
-) -> None:
+) -> str | None:
     tag = "WRITE" if commit else "dry-run — WOULD WRITE"
     print("\n" + "=" * 78)
     print(tag)
@@ -458,6 +508,7 @@ def do_writes(
     if commit:
         db.table("commitment_transitions").insert(transition).execute()
         print(f"\n  committed: commitment {commitment_id}")
+    return commitment_id
 
 
 # --- main -----------------------------------------------------------------
@@ -482,11 +533,19 @@ def main() -> int:
     )
     p.add_argument("--commit", action="store_true", help="actually write to Supabase")
     p.add_argument(
+        "--sms",
+        action="store_true",
+        help="after committing, SMS the negotiation specs to the awarded carrier only "
+        "(requires --commit)",
+    )
+    p.add_argument(
         "--force-incomplete",
         action="store_true",
         help="allow awarding a carrier whose recap has no confirmed price",
     )
     args = p.parse_args()
+    if args.sms and not args.commit:
+        return _fail("--sms notifies the carrier of a recorded award; pass --commit too")
 
     settings = get_settings()
     fx = {k.upper(): float(v) for k, v in (a.split("=", 1) for a in args.fx)}
@@ -637,7 +696,7 @@ def main() -> int:
 
     if mandate is None:
         return _fail("operation has no active mandate — cannot award")
-    do_writes(
+    commitment_id = do_writes(
         db,
         tenant_id=op["tenant_id"],
         operation_id=op["id"],
@@ -649,8 +708,24 @@ def main() -> int:
         fx=fx,
         commit=args.commit,
     )
+
+    # SMS — only the awarded carrier, only once its commitment row exists.
+    body = sms_body(op["reference"], container, award)
+    print("\n" + "=" * 78 + "\nSMS TO AWARDED CARRIER\n" + "=" * 78)
+    print(f"To:   {award.contact_name or '(sin contacto)'}  <{award.contact_phone or '—'}>")
+    print(f"Body: {body}")
+    sms_result: dict[str, str] = {"status": "not-sent (no --sms)"}
+    if args.sms and commitment_id:
+        sms_result = send_sms(award.contact_phone or "", body)
+        print(f"      -> {sms_result}")
+    elif args.sms:
+        print("      -> skipped: no commitment was written")
+
+    artifact["sms"] = {"to": award.contact_phone, "body": body, "result": sms_result}
+    out.write_text(json.dumps(artifact, ensure_ascii=False, indent=2), encoding="utf-8")
+
     if not args.commit:
-        print("\n(dry run — pass --commit to write the rows above)")
+        print("\n(dry run — pass --commit to write, and --commit --sms to notify)")
     return 0
 
 
