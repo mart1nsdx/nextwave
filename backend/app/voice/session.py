@@ -16,7 +16,7 @@ import asyncio
 import contextlib
 import time
 from collections import deque
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
 from enum import Enum, auto
 
 import structlog
@@ -24,6 +24,7 @@ from agents import TResponseInputItem
 
 from app.agent import GREETING, RECOVERY_LINE, build_agent
 from app.config import Settings
+from app.tools.conversation_guard import ConversationGuard, build_demo_guard
 
 from .events import FinalTranscript, SpeechStarted, UtteranceEnd
 from .frames import AudioSink, AudioSource
@@ -53,6 +54,7 @@ class VoiceSession:
         greeting: str,
         clock: Callable[[], float] = time.perf_counter,
         latency_evidence: str = "LIVE",
+        guard: ConversationGuard | None = None,
     ) -> None:
         self._stt = stt
         self._tts = tts
@@ -61,6 +63,7 @@ class VoiceSession:
         self._greeting = greeting
         self._clock = clock
         self._latency_evidence = latency_evidence
+        self._guard = guard
 
         self._turn = Turn.LISTENING
         self._history: list[TResponseInputItem] = []
@@ -72,6 +75,7 @@ class VoiceSession:
         self._active_latency: ActiveTurnLatency | None = None
         self._audio_wall: deque[tuple[int, float]] = deque(maxlen=3000)
         self._log = log
+        self._call_id = "unbound"
 
     @property
     def history(self) -> list[TResponseInputItem]:
@@ -85,7 +89,8 @@ class VoiceSession:
     async def run(self, source: AudioSource, sink: AudioSink) -> None:
         # Bound once, so every line this call produces can be filtered out of the three
         # conversations running in parallel.
-        self._log = log.bind(call_id=source.call_id)
+        self._call_id = source.call_id
+        self._log = log.bind(call_id=self._call_id)
         stt = await self._stt.connect()
         voice = await self._tts.connect()
         self._sink, self._voice = sink, voice
@@ -166,6 +171,7 @@ class VoiceSession:
         self._active_latency = ActiveTurnLatency(
             turn=len(self._latencies) + 1,
             evidence=self._latency_evidence,
+            response_source="MODEL",
             utterance_end_offset_ms=offset_ms,
             started_at=started_at,
             stt_endpoint_ms=round(max(0.0, (started_at - audio_ended_at) * 1000), 1),
@@ -179,7 +185,24 @@ class VoiceSession:
         self._turn = Turn.SPEAKING
         said = ""
         try:
-            async for chunk in self._reasoner.reply(self._history):
+            directive = (
+                self._guard.input_directive(
+                    heard,
+                    call_id=self._call_id,
+                    offset_ms=offset_ms,
+                )
+                if self._guard is not None
+                else None
+            )
+            if directive is not None and self._active_latency is not None:
+                self._active_latency.response_source = "POLICY_FAST_PATH"
+            chunks = _one_chunk(directive) if directive else self._reasoner.reply(self._history)
+            async for raw_chunk in chunks:
+                chunk, blocked = (
+                    self._guard.filter_model_chunk(raw_chunk)
+                    if self._guard is not None and directive is None
+                    else (raw_chunk, False)
+                )
                 active = self._active_latency
                 if active is not None and active.model_first_chunk_at is None:
                     active.model_first_chunk_at = self._clock()
@@ -193,6 +216,8 @@ class VoiceSession:
                     )
                 said = f"{said} {chunk}".strip()
                 await self._speak(chunk)
+                if blocked:
+                    break
             await self._flush()
             self._history.append({"role": "assistant", "content": said})
             self._log.info("said", text=said)
@@ -204,7 +229,7 @@ class VoiceSession:
             # heard less — playback was still in flight — but never more, so the agent
             # can never later claim it said something the other side never got.
             if said:
-                self._history.append({"role": "assistant", "content": f"{said} [interrumpido]"})
+                self._history.append({"role": "assistant", "content": f"{said} [interrupted]"})
             if self._active_latency is not None:
                 self._active_latency.spoken_text = said
             self._log.info("reply_interrupted", spoken_chars=len(said))
@@ -292,6 +317,7 @@ class VoiceSession:
             **{
                 "turn": sample.turn,
                 "evidence": sample.evidence,
+                "response_source": sample.response_source,
                 "stt_endpoint_ms": sample.stt_endpoint_ms,
                 "model_first_chunk_ms": sample.model_first_chunk_ms,
                 "tts_first_audio_ms": sample.tts_first_audio_ms,
@@ -321,4 +347,9 @@ def build_session(settings: Settings) -> VoiceSession:
         vad=VadSettings.from_settings(settings),
         greeting=GREETING,
         latency_evidence="LIVE_PSTN",
+        guard=build_demo_guard(),
     )
+
+
+async def _one_chunk(text: str) -> AsyncIterator[str]:
+    yield text

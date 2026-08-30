@@ -11,6 +11,7 @@ class TurnLatency:
 
     turn: int
     evidence: str
+    response_source: str
     utterance_end_offset_ms: int
     stt_endpoint_ms: float
     model_first_chunk_ms: float | None
@@ -27,6 +28,7 @@ class TurnLatency:
 class ActiveTurnLatency:
     turn: int
     evidence: str
+    response_source: str
     utterance_end_offset_ms: int
     started_at: float
     stt_endpoint_ms: float
@@ -39,6 +41,7 @@ class ActiveTurnLatency:
         return TurnLatency(
             turn=self.turn,
             evidence=self.evidence,
+            response_source=self.response_source,
             utterance_end_offset_ms=self.utterance_end_offset_ms,
             stt_endpoint_ms=self.stt_endpoint_ms,
             model_first_chunk_ms=_elapsed(self.started_at, self.model_first_chunk_at),

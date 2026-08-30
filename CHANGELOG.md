@@ -25,6 +25,13 @@ invented timestamps is worse than no log, because the ordering lies silently.
 
 ---
 
+## 2026-08-29T19:16-0500 · voice/agent/tools/policy/security · Person 2/Codex
+Converted the complete demo profile, scenarios, and spoken behavior to English and connected the
+live conversation loop to deterministic policy mediation through the approved tools boundary.
+→ Affects: voice/demo/security. Explicit numeric USD offers are evaluated before the model; an
+  over-cap offer or false caller authority claim produces a fixed escalation and cannot become an
+  acceptance. This is a narrow demo adapter, not comprehensive natural-language quote extraction.
+
 ## 2026-08-29T19:05-0500 · agent/voice/security · Person 2/Codex
 Added deterministic speech-duration budgeting and an exact-match precompiled pickup-date fact for
 short common answers; unmatched dates remain untouched and exact safety recaps are never truncated.

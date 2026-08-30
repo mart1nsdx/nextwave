@@ -4025,3 +4025,44 @@ remain exempt when completeness requires more words.
 
 **Verification:** strict full-match/no-match tests, prompt invariants, duration-budget tests, and the
 complete local suite are required. Other languages/date grammars and 20+ real PSTN turns remain NOT RUN.
+
+## D68 / Person 2 D-16E — English policy-mediated conversational demo
+
+**Status:** APPROVED
+
+**Approved by:** Person 2 / human decision owner
+
+**Approved at:** 2026-08-29T19:16:00-05:00
+
+**Context:** the owner requested an English conversational demo in which the existing personality
+remains useful while caller statements cannot override the deterministic mandate. Before this
+decision, the model could converse but the session supplied no policy-mediated tools.
+
+**Alternatives considered:** A: rely on the security prompt; B: put policy imports directly in the
+voice layer; C: mediate explicit structured conversational facts through `voice → tools → policy`
+and filter acceptance claims; D: claim complete natural-language enforcement before implementing
+typed extraction for every quote field. A leaves authorization probabilistic; B violates the import
+DAG; D would be a false assurance. C adds a deterministic denial path without moving authority into
+the model and preserves the existing architecture.
+
+**Decided:** Alternative C. The demo company, call scenarios, greeting, dates, and generated speech
+are English. An explicit numeric USD amount is converted into a typed proposal and evaluated by the
+kernel before the model runs. A non-ALLOW result produces a fixed English denial and team escalation.
+Generated acceptance or commitment claims are replaced with a fixed non-binding statement. This
+adapter may deny but never authorize a commitment; caller claims such as “your boss approved it” do
+not modify the mandate.
+
+**Limits and residual risk:** enforcement currently recognizes explicit numeric USD expressions and
+a conservative set of acceptance phrases. It does not yet provide comprehensive extraction of
+spoken number words, foreign-currency quotes, all-in component completeness, dates, equipment,
+identity, or every paraphrase. The live model remains intelligent conversationally but untrusted.
+No actual carrier booking, email, persistence, provider telephony, or human handoff is connected.
+
+**Observed evidence:** lint and strict typing passed; all 55 local tests passed, including layering
+and hostile conversation tests. A live-model/fake-STT/fake-TTS English sample answered the pickup
+question coherently in nine words with first audio at 1,460.9 ms. A local hostile scenario bypassed
+the model and rejected both a USD 10,500 offer and “your boss already approved” against a USD 9,000
+demo cap. These are simulated-transport observations, not PSTN evidence.
+
+**Verification:** comprehensive typed conversational extraction, foreign-exchange evidence,
+persistence, actual escalation routing, live PSTN/STT/TTS, and manual phone inspection remain NOT RUN.

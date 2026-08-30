@@ -528,6 +528,10 @@ _SPANISH_DATE_RANGE = re.compile(
     r"de (?P<month>[a-záéíóúñ]+) de (?P<year>\d{4})$",
     re.IGNORECASE,
 )
+_ENGLISH_DATE_RANGE = re.compile(
+    r"^between (?P<month>[A-Za-z]+) (?P<start_date>\d{1,2}) "
+    r"and (?P=month) (?P<end_date>\d{1,2}), (?P<year>\d{4})$"
+)
 
 
 def _runtime_pickup_answer(context: CallContext) -> str | None:
@@ -535,13 +539,20 @@ def _runtime_pickup_answer(context: CallContext) -> str | None:
     if context.pickup_window is None:
         return None
     match = _SPANISH_DATE_RANGE.fullmatch(context.pickup_window.strip())
-    if match is None:
-        return None
-    values = match.groupdict()
-    return (
-        f"Del {values['start_date']} al {values['end_date']} de "
-        f"{values['month']} de {values['year']}. ¿Tiene chasis?"
-    )
+    if match is not None:
+        values = match.groupdict()
+        return (
+            f"Del {values['start_date']} al {values['end_date']} de "
+            f"{values['month']} de {values['year']}. ¿Tiene chasis?"
+        )
+    match = _ENGLISH_DATE_RANGE.fullmatch(context.pickup_window.strip())
+    if match is not None:
+        values = match.groupdict()
+        return (
+            f"{values['month']} {values['start_date']} to {values['end_date']}, "
+            f"{values['year']}. Do you have a chassis?"
+        )
+    return None
 
 
 def _runtime_operation(profile: CompanyProfile, context: CallContext) -> str:
@@ -550,7 +561,11 @@ def _runtime_operation(profile: CompanyProfile, context: CallContext) -> str:
     fast_fact = _runtime_pickup_answer(context)
     if fast_fact is None or context.pickup_window is None:
         return block
-    compact_range = fast_fact.removesuffix(" ¿Tiene chasis?").removesuffix(".")
+    compact_range = (
+        fast_fact.removesuffix(" ¿Tiene chasis?")
+        .removesuffix(" Do you have a chassis?")
+        .removesuffix(".")
+    )
     return block.replace(context.pickup_window, compact_range, 1)
 
 
@@ -578,19 +593,19 @@ def escalation_line(profile: CompanyProfile) -> str:
 # keeps running while the platform side is built; delete it once a real profile arrives
 # from repo/, and do not add a second one here.
 DEMO_PROFILE = CompanyProfile(
-    display_name="Textiles Pacífico",
+    display_name="Pacific Textiles",
     business_type="importer",
     city="Guadalajara",
-    country="México",
-    commodities=["textiles", "telas en rollo"],
-    equipment=["chasis para contenedor de 40 pies"],
-    currency="MXN",
+    country="Mexico",
+    commodities=["textiles", "fabric rolls"],
+    equipment=["40-foot container chassis"],
+    currency="USD",
     timezone="America/Mexico_City",
     # Overridden away from the en / es-CO default: this lane is Mexican, and the register a
     # dispatcher in Manzanillo expects is not the one a dispatcher in Bogotá expects.
-    primary_language="es-MX",
+    primary_language="en",
     fallback_language="en",
-    recap_channel="sms",
+    recap_channel="email",
 )
 
 # The ceiling matches docs/UGLY_CASES.md row 1 on purpose — the judge says "your boss
@@ -598,13 +613,13 @@ DEMO_PROFILE = CompanyProfile(
 # cannot drift apart.
 DEMO_CONTEXT = CallContext(
     phase=CallPhase.RFQ,
-    today="viernes, 29 de agosto de 2026",
+    today="Saturday, August 29, 2026",
     reference="OP-1042",
     origin="Manzanillo",
-    destination="nuestra bodega en Guadalajara",
-    cargo="un contenedor de 40 pies con textiles",
-    equipment="chasis de 40 pies",
-    pickup_window="entre el martes 2 y el jueves 4 de septiembre de 2026",
+    destination="our warehouse in Guadalajara",
+    cargo="a 40-foot container of textiles",
+    equipment="40-foot container chassis",
+    pickup_window="between September 2 and September 4, 2026",
     price_ceiling=Decimal("9000"),
     target_price=Decimal("8200"),
 )
