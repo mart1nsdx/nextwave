@@ -25,6 +25,17 @@ invented timestamps is worse than no log, because the ordering lies silently.
 
 ---
 
+## 2026-08-29T21:50-0500 · telephony/config · Nacho/agent
+Closed the public surface. Every Twilio POST now validates `X-Twilio-Signature` against
+`PUBLIC_BASE_URL` (not `request.url` — ngrok terminates TLS), honouring the previously dead
+`VALIDATE_TWILIO_SIGNATURE` flag. Every non-Twilio route (`POST /calls`, `GET /calls`, transcript,
+recap, brief) now requires `Authorization: Bearer $INTERNAL_API_TOKEN`; an unset token refuses with
+503 rather than staying open. `/twilio/media` hangs up when the first `start` message carries a
+CallSid with no open case, before a paid STT/LLM/TTS session exists. `/health` stays open.
+→ Affects: everyone running the backend — add `INTERNAL_API_TOKEN` to your `.env` (new key in
+`backend/.env.example`) or the API returns 503, and send the bearer header from any script or
+dashboard call. Anything posting to `/twilio/*` by hand needs `VALIDATE_TWILIO_SIGNATURE=false`.
+
 ## 2026-08-29T19:50-0500 · scripts/policy/security · Person 2/Codex
 Integrated main's recap-ranking workflow as analysis-only and fail-closed its `--commit`, `--sms`,
 and `--force-incomplete` modes until typed proposals pass deterministic policy and a one-use claim.

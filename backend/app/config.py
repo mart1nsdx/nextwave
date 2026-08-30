@@ -20,7 +20,14 @@ class Settings(BaseSettings):
     twilio_account_sid: str = ""
     twilio_auth_token: str = ""
     twilio_phone_number: str = ""
+    # Read by telephony/auth.py. False is for sim_call and local curl testing only:
+    # with it off, anyone who reaches the tunnel can forge a webhook.
     validate_twilio_signature: bool = True
+
+    # --- Operator API ---
+    # Shared bearer token for every non-Twilio route (POST /calls dials a real number).
+    # Unset means those routes refuse — fail closed, never open.
+    internal_api_token: str = ""
 
     # --- Reasoning (OpenAI, via the Agents SDK) ---
     openai_api_key: str = ""
