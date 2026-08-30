@@ -6,6 +6,7 @@ whether something is *allowed*, it belongs in policy/ instead (AGENTS.md invaria
 
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime
 from enum import StrEnum
 from typing import Any
@@ -122,6 +123,9 @@ class TranscriptEvent(BaseModel):
     ``audio_offset_ms`` is the anchor a commitment links back to (AGENTS.md invariant #3):
     a commitment with no offset is EVIDENCE_MISSING, never ``verified``. ``event_key`` is
     the idempotency key — a redelivered frame must not create a second row (#7).
+
+    ``sequence_number`` is an ordering hint within a call and nothing more. It is not the
+    identity of the row and must never be treated as one; see ``build_event_key``.
     """
 
     call_sid: str
@@ -132,16 +136,21 @@ class TranscriptEvent(BaseModel):
     audio_offset_ms: int = Field(ge=0)
     text: str
     is_final: bool = False
+    interrupted: bool = False
+    # Denormalised from the CallBinding so evidence is queryable per case without a join
+    # through ``calls``. Nullable: the binding is resolved before the session is built and
+    # that plumbing is work item W2, not this one — a row written without it is still
+    # evidence, it just cannot be filtered by operation yet.
+    operation_id: UUID | None = None
+    rfq_id: UUID | None = None
 
 
-def build_event_key(call_sid: str, track: TranscriptTrack, sequence_number: int) -> str:
-    """Deterministic idempotency key for a transcript event.
+def build_event_key(call_sid: str, track: TranscriptTrack, offset_ms: int, text: str) -> str:
+    """Content-addressed. A redelivered segment produces the same key because it says
+    the same thing at the same instant — not because a counter happened to line up."""
 
-    Deterministic on purpose: if OpenAI or Twilio redelivers the same segment, the key
-    is identical and the store's insert becomes a no-op (AGENTS.md invariant #7).
-    """
-
-    return f"{call_sid}:{track.value}:{sequence_number}"
+    digest = hashlib.sha256(f"{call_sid}|{track.value}|{offset_ms}|{text}".encode()).hexdigest()
+    return f"{call_sid}:{digest[:32]}"
 
 
 class Recap(BaseModel):

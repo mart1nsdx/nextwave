@@ -40,17 +40,58 @@ async def test_segments_are_ordered_by_offset() -> None:
 
 
 async def test_redelivered_segment_is_a_noop() -> None:
+    """The same segment recorded three times is one row.
+
+    The sequence number deliberately differs on each redelivery: it is an ordering hint,
+    not identity. Identity is the content — same call, same track, same instant, same
+    words — so a redelivery collapses onto the row it already wrote even when the counter
+    behind it has moved on (AGENTS.md invariant #7).
+    """
     ledger, store = await _ledger_with_case()
-    for _ in range(3):
+    for attempt in range(1, 4):
         await ledger.record_segment(
             "CA1",
             track=TranscriptTrack.INBOUND,
-            sequence_number=1,
+            sequence_number=attempt,
             audio_offset_ms=1000,
             text="hola",
             is_final=True,
         )
-    assert len(await store.list_events("CA1")) == 1
+    events = await store.list_events("CA1")
+    assert len(events) == 1
+    assert events[0].text == "hola"
+
+
+async def test_two_segments_at_the_same_offset_are_two_rows() -> None:
+    """Different words at the same instant are different evidence.
+
+    Both tracks can settle a segment on the same audio offset. Collapsing them — which is
+    what a counter-based key does the moment two writers seed it from the same read — is
+    evidence disappearing with no error anywhere.
+    """
+    ledger, store = await _ledger_with_case()
+    await ledger.record_segment(
+        "CA1",
+        track=TranscriptTrack.INBOUND,
+        sequence_number=1,
+        audio_offset_ms=1000,
+        text="ocho mil quinientos",
+        is_final=True,
+        speaker=Speaker.CALLER,
+    )
+    await ledger.record_segment(
+        "CA1",
+        track=TranscriptTrack.INBOUND,
+        sequence_number=1,  # same counter, on purpose
+        audio_offset_ms=1000,
+        text="perdon, nueve mil",
+        is_final=True,
+        speaker=Speaker.CALLER,
+    )
+    events = await store.list_events("CA1")
+    assert len(events) == 2
+    assert {e.text for e in events} == {"ocho mil quinientos", "perdon, nueve mil"}
+    assert len({e.event_key for e in events}) == 2
 
 
 async def test_later_utterance_does_not_edit_an_earlier_one() -> None:

@@ -49,7 +49,11 @@ class TranscriptStore(Protocol):
         """Append one transcript event. A second call with the same event_key is a no-op."""
 
     async def list_events(self, call_sid: str) -> list[TranscriptEvent]:
-        """All events for a call, ordered by audio offset then sequence."""
+        """All events for a call, ordered by (audio_offset_ms, sequence_number, created_at).
+
+        Three keys because the first two no longer identify a row: sequence_number is an
+        ordering hint, so creation order is what settles a remaining tie.
+        """
 
     async def get_case(self, call_sid: str) -> CallCase | None: ...
 
