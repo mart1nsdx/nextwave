@@ -8,11 +8,17 @@ This is deliberately NOT the live call path. Nothing here decides anything durin
 call. It runs afterwards, once every carrier has been phoned and every call has a
 `call_recaps` row, and it does one thing:
 
-    read the recaps  ->  normalise each quote (LLM extraction, never inference)
-                     ->  score the carriers with an explainable formula
-                     ->  pick the best one
-                     ->  draft the confirmation email to that carrier's contact
-                     ->  (with --commit) write the offer / participant / commitment rows
+    take ONE container / RFQ  ->  keep only the carrier calls tied to it (no mixing
+                                  cases; a call from another container is excluded)
+                              ->  normalise each quote (LLM extraction, never inference)
+                              ->  score the carriers with an explainable formula
+                              ->  pick the best one
+                              ->  draft the confirmation email to that carrier's contact
+                              ->  (with --commit) write the offer / participant / commitment rows
+
+A call is tied to the RFQ by `call_cases.metadata->>'rfq_id'`, by an existing `offers`
+row, or by `--assign CALL_SID=COUNTERPARTY_ID` (which --commit then saves to
+`call_cases.metadata` so it stays tied).
 
 The commitment it writes lands at `chain_state = 'VERBAL'`. Reaching `COMMITTED` still
 needs the real chain — a confirmed read-back, a sent recap, an `evidence` row — which a
@@ -101,6 +107,7 @@ class Carrier:
     contact_name: str | None
     contact_phone: str | None
     recap: dict[str, Any]
+    tag_source: str = ""  # how this call was tied to the RFQ: metadata | offer | assign
     quote: ExtractedQuote | None = None
     usd_minor: int | None = None
     fx_snapshot_id: str | None = None
@@ -208,40 +215,62 @@ def score_carriers(carriers: list[Carrier], m_start: str | None, m_end: str | No
 
 
 # --- carrier discovery -------------------------------------------------------
-def resolve_carriers(db: Any, rfq_operation_id: str, assigns: dict[str, str]) -> list[Carrier]:
+def resolve_carriers(
+    db: Any, rfq_id: str, assigns: dict[str, str]
+) -> tuple[list[Carrier], list[str]]:
+    """Only calls tied to THIS RFQ are considered. Returns (carriers, excluded_notes).
+
+    A call belongs to the RFQ when any of:
+      * call_cases.metadata->>'rfq_id' == rfq_id           (tag written at/after call time)
+      * an offers row links its case_id to this rfq_id
+      * it is named in --assign  (an explicit tie; persisted with --commit)
+    Anything else with a recap is noise from another case and is excluded, loudly.
+    """
     contacts = _all(db, "counterparty_contacts")
     by_phone = {c["phone"]: c for c in contacts}
+    by_cp = {c["counterparty_id"]: c for c in contacts}
     cps = {c["id"]: c for c in _all(db, "counterparties")}
 
-    recaps = _all(db, "call_recaps")
-    recap_by_sid = {r["call_sid"]: r for r in recaps}
+    recap_by_sid = {r["call_sid"]: r for r in _all(db, "call_recaps")}
+    offers_here = _all(db, "offers", rfq_id=rfq_id)
+    cp_by_case = {o["case_id"]: o["counterparty_id"] for o in offers_here if o.get("case_id")}
 
-    out: list[Carrier] = []
-    cases = _all(db, "call_cases")
-    for case in cases:
+    carriers: list[Carrier] = []
+    excluded: list[str] = []
+    for case in _all(db, "call_cases"):
         sid = case["twilio_call_sid"]
         recap = recap_by_sid.get(sid)
         if recap is None:
             continue
-        cp_id = assigns.get(sid)
-        contact = None
-        if cp_id is None:
-            for num in (case.get("from_number"), case.get("to_number")):
-                if num and num in by_phone:
-                    contact = by_phone[num]
-                    cp_id = contact["counterparty_id"]
-                    break
-        else:
-            contact = next((c for c in contacts if c["counterparty_id"] == cp_id), None)
-        if cp_id is None:
-            print(
-                f"  ? call {sid} ({case.get('from_number')}) has a recap but no carrier — "
-                f"pass --assign {sid}=<counterparty_id>",
-                file=sys.stderr,
+
+        meta = case.get("metadata") or {}
+        cp_id: str | None = None
+        source = ""
+        if assigns.get(sid):
+            cp_id, source = assigns[sid], "assign"
+        elif meta.get("rfq_id") == rfq_id:
+            cp_id, source = meta.get("counterparty_id"), "metadata"
+        elif case["id"] in cp_by_case:
+            cp_id, source = cp_by_case[case["id"]], "offer"
+
+        if source == "":
+            excluded.append(
+                f"call {sid} ({case.get('from_number')}) has a recap but is NOT tied to "
+                f"RFQ {rfq_id[:8]} — ignored. Tie it with --assign {sid}=<counterparty_id>."
             )
             continue
+        if cp_id is None:  # tagged to the RFQ but the carrier is unknown
+            for num in (case.get("from_number"), case.get("to_number")):
+                if num in by_phone:
+                    cp_id = by_phone[num]["counterparty_id"]
+                    break
+        if cp_id is None:
+            excluded.append(f"call {sid} is tied to the RFQ but no carrier — --assign it.")
+            continue
+
+        contact = by_cp.get(cp_id)
         cp = cps.get(cp_id, {})
-        out.append(
+        carriers.append(
             Carrier(
                 counterparty_id=cp_id,
                 name=cp.get("name", cp_id),
@@ -252,13 +281,14 @@ def resolve_carriers(db: Any, rfq_operation_id: str, assigns: dict[str, str]) ->
                 contact_name=(contact or {}).get("name"),
                 contact_phone=(contact or {}).get("phone"),
                 recap=recap,
+                tag_source=source,
             )
         )
-    return out
+    return carriers, excluded
 
 
 # --- email -----------------------------------------------------------------
-def email_template(op_ref: str, winner: Carrier, cap_usd_minor: int | None) -> dict[str, str]:
+def email_template(op_ref: str, container: str, winner: Carrier) -> dict[str, str]:
     q = winner.quote or ExtractedQuote()
     price = (
         f"{q.price_amount:,.0f} {q.price_currency}"
@@ -269,10 +299,11 @@ def email_template(op_ref: str, winner: Carrier, cap_usd_minor: int | None) -> d
     who = winner.contact_name or "equipo de despacho"
     body = f"""Estimado/a {who} ({winner.name}),
 
-Gracias por la cotización para la operación {op_ref} (arrastre Manzanillo → Guadalajara,
-contenedor 40' HC).
+Gracias por la cotización para la operación {op_ref}, contenedor {container}
+(arrastre Contecon Manzanillo → Guadalajara).
 
-Tras comparar las cotizaciones recibidas, su propuesta es la seleccionada:
+Tras comparar las cotizaciones recibidas para este contenedor, su propuesta es la
+seleccionada:
 
   • Tarifa:            {price}
   • Ventana de recogida: {window}
@@ -280,14 +311,17 @@ Tras comparar las cotizaciones recibidas, su propuesta es la seleccionada:
 
 Esto NO es aún una adjudicación en firme. Para confirmarla necesitamos que respondan a
 este correo ratificando la tarifa y la ventana exactas. Una vez recibida su confirmación
-por escrito, emitimos la orden.
+por escrito, emitimos la orden para el contenedor {container}.
 
 Quedamos atentos.
 """
     return {
         "to_name": who,
         "to_phone": winner.contact_phone or "",
-        "subject": f"{winner.name} — cotización seleccionada, {op_ref} (pendiente de confirmación)",
+        "subject": (
+            f"{winner.name} — cotización seleccionada, {op_ref} / {container} "
+            f"(pendiente de confirmación)"
+        ),
         "body": body,
     }
 
@@ -436,7 +470,8 @@ def main() -> int:
         action="append",
         default=[],
         metavar="CALL_SID=COUNTERPARTY_ID",
-        help="map a call to a carrier when phone matching can't",
+        help="tie a call to a carrier for this RFQ; with --commit it is saved to "
+        "call_cases.metadata so later runs need no flag",
     )
     p.add_argument(
         "--fx",
@@ -479,11 +514,47 @@ def main() -> int:
         else None
     )
 
-    print(f"operation {op['reference']}  rfq {rfq['id']}  phase={rfq['phase']}")
-    carriers = resolve_carriers(db, op["id"], assigns)
+    container = (op.get("vertical_payload") or {}).get("container_number") or "(sin número)"
+    print(
+        f"operation {op['reference']}  container {container}  rfq {rfq['id']}  phase={rfq['phase']}"
+    )
+
+    carriers, excluded = resolve_carriers(db, rfq["id"], assigns)
+    for ex_note in excluded:
+        print(f"  excluded: {ex_note}", file=sys.stderr)
     if not carriers:
-        return _fail("no calls with a recap could be matched to a carrier in this RFQ")
-    print(f"carriers with a recap: {len(carriers)}")
+        return _fail(
+            "no call is tied to this RFQ. Tie each carrier call with "
+            "--assign CALL_SID=COUNTERPARTY_ID (add --commit to persist the tag)."
+        )
+    print(f"carriers in this quotation process: {len(carriers)}")
+    for c in carriers:
+        print(f"  - {c.name}  (call {c.call_sid[:12]}…, tied via {c.tag_source})")
+
+    # Persist any --assign as a durable tag on the call, so the next run needs no flags
+    # and nothing from another container can leak into this comparison.
+    if assigns:
+        for c in carriers:
+            if c.tag_source != "assign":
+                continue
+            tag = {
+                "rfq_id": rfq["id"],
+                "operation_ref": op["reference"],
+                "counterparty_id": c.counterparty_id,
+                "container_number": container,
+            }
+            print(f"  {'tag' if args.commit else 'would tag'} call_cases {c.call_sid}: {tag}")
+            if args.commit:
+                db.table("call_cases").update(
+                    {
+                        "metadata": {
+                            **(_one(db, "call_cases", twilio_call_sid=c.call_sid) or {}).get(
+                                "metadata", {}
+                            ),
+                            **tag,
+                        }
+                    }
+                ).eq("twilio_call_sid", c.call_sid).execute()
 
     for c in carriers:
         c.quote = extract_quote(c.recap, settings.openai_agent_model, settings.openai_api_key)
@@ -528,7 +599,7 @@ def main() -> int:
     )
     print(f"\nWINNER: {award.name}  —  {reason}")
 
-    mail = email_template(op["reference"], award, cap_usd_minor)
+    mail = email_template(op["reference"], container, award)
     print("\n" + "=" * 78 + "\nEMAIL TEMPLATE (draft — not sent)\n" + "=" * 78)
     print(f"To:      {mail['to_name']}  <{mail['to_phone']}>")
     print(f"Subject: {mail['subject']}\n")
@@ -537,7 +608,10 @@ def main() -> int:
     artifact = {
         "generated_at": datetime.now(UTC).isoformat(),
         "operation": op["reference"],
+        "container_number": container,
         "rfq_id": rfq["id"],
+        "carriers_in_process": len(carriers),
+        "excluded_calls": excluded,
         "mandate_cap_usd_minor": cap_usd_minor,
         "winner": award.name,
         "reason": reason,
@@ -545,6 +619,7 @@ def main() -> int:
             {
                 "carrier": c.name,
                 "call_sid": c.call_sid,
+                "tied_via": c.tag_source,
                 "score": c.score,
                 "breakdown": c.score_breakdown,
                 "usd_minor": c.usd_minor,

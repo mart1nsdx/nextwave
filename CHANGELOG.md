@@ -25,6 +25,16 @@ invented timestamps is worse than no log, because the ordering lies silently.
 
 ---
 
+## 2026-08-29T19:03-05 · scripts · Martin/claude
+`award_from_recaps.py` now scopes strictly to one container / RFQ: it only compares
+carrier calls tied to that RFQ and excludes any other recap as noise. A call is tied by
+`call_cases.metadata->>'rfq_id'`, by an `offers` row, or by `--assign` (which `--commit`
+persists into `call_cases.metadata` as `{rfq_id, operation_ref, counterparty_id,
+container_number}`). If nothing is tied, it refuses rather than guessing.
+→ Affects: whoever wires the live outbound-call path — stamp those same
+  `call_cases.metadata` keys when the agent dials a carrier for an operation, so the
+  post-call comparison needs no manual `--assign`.
+
 ## 2026-08-29T18:55-05 · tests · Martin/claude
 `test_voice_webhook_hands_the_call_to_our_socket` now forces `InMemoryTranscriptStore`.
 With a real `backend/.env` present it was building a live Supabase client and its
