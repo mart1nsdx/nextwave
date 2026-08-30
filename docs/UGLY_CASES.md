@@ -30,7 +30,9 @@ wording the agent uses to get there.
 | 18 | Creative binding language | Model says “lock it in”, “you have the load”, or equivalent award language | Replace with non-binding pre-agreement wording | `test_creative_binding_language_is_mediated` |
 | 19 | Direct request for a person | “Quiero hablar con una persona” | One `DIRECT_REQUEST` handoff; no further negotiation or commitment | `test_direct_handoff_request_is_idempotent` |
 | 20 | Human unavailable | Escalation number busy, rejects or does not answer | `HANDOFF_FAILED`; carrier is never silently left on hold | `test_handoff_failure_closes_without_commitment` |
+| 21 | Zero transcript anchor | Extractor emits `audio_offset_ms=0` for an affirmation no transcript line carries | Not evidenced; candidate remains unconfirmed. `0` is a legal offset, so only ledger membership decides | `test_zero_transcript_anchor_is_not_affirmed` |
+| 22 | Fabricated transcript anchor | Extractor emits a plausible offset (e.g. 12345) absent from the ledger | Not evidenced. An offset is a claim, never proof | `test_fabricated_transcript_anchor_is_not_affirmed` |
 
 Rows 1–7 come straight from `CHALLENGE.md` (§3 and §5) — they are what the judge is
-expected to try. Rows 8–20 are the failure modes the invariants in `AGENTS.md` exist to
+expected to try. Rows 8–22 are the failure modes the invariants in `AGENTS.md` exist to
 prevent; they are less likely to be exercised live, and more likely to be fatal if hit.

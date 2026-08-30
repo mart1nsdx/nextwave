@@ -25,7 +25,17 @@ from app.domain.models import (
 
 
 class _RecapDraft(BaseModel):
-    """Model output shape — no call_sid, no timestamp; the caller stamps those."""
+    """Model output shape — no call_sid, no timestamp; the caller stamps those.
+
+    This class is not just a parse target: `chat.completions.parse` serialises it into the
+    strict JSON schema the model must answer in, so every field here is a word the
+    extractor is allowed to say. Strict mode lists all properties as required, which means
+    "optional" can only be expressed as an explicit null — the reason
+    `AgreementCandidate.audio_offset_ms` is `int | None`. Narrowing it back to a bare
+    `int` would delete the model's only way to report that nothing anchored an
+    affirmation, and it would answer with a fabricated offset instead. Pinned by
+    tests/test_recap_schema.py.
+    """
 
     summary: str
     key_points: list[str] = Field(default_factory=list)

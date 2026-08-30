@@ -25,6 +25,22 @@ invented timestamps is worse than no log, because the ordering lies silently.
 
 ---
 
+## 2026-08-29T22:27-0500 · domain/agent · Nacho/agent
+`AgreementCandidate.audio_offset_ms` is now `int | None` (default `None`). It was a required
+non-nullable int, and because that model is serialised straight into the OpenAI
+structured-output response schema, the extractor had no way to say "no turn anchors this
+affirmation" — it emitted a number it never heard, usually `0`. `policy/engine.py`
+`require_preagreement_evidence` only rejects `transcript_anchor_ms is None`, so a fabricated
+`0` passed the evidence gate (AGENTS.md invariant #8). Nothing in `policy/` changed. New pure
+predicate `domain.anchor_is_evidenced(offset_ms, anchored_offsets)` returns `False` for `None`
+*and* for any offset the persisted transcript never recorded; caller supplies the offsets from
+the ledger. `AgreementCandidate` and `anchor_is_evidenced` are now exported from `app.domain`.
+`RECAP_SYSTEM` now tells the model to copy the `[N ms]` prefix verbatim or emit null. Ugly-case
+rows 21 and 22 added; new `tests/test_recap_schema.py` pins the serialised schema's null variant.
+→ Affects: whoever wires the affirmation chain (W5) — call `anchor_is_evidenced` with real
+ledger offsets before treating a candidate as affirmed; a non-null anchor alone is not evidence.
+Anyone reading `AgreementCandidate.audio_offset_ms` must now handle `None`.
+
 ## 2026-08-29T21:53-0500 · repo/domain/supabase · Nacho/agent
 The case spine landed. Two migrations: `call_cases` is renamed to **`calls`** ("case" now
 means the business case) and eight new tables arrive — `operations`, `mandates`, `carriers`,
