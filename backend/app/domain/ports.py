@@ -8,7 +8,7 @@ model seam: ``agent/`` depends on ``RecapModel``, not on a vendor SDK.
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Any, Protocol
 
 from app.domain.commitment import ChainState, DecisionRow, OfferRow
 from app.domain.models import (
@@ -59,6 +59,17 @@ class TranscriptStore(Protocol):
     async def set_recap_delivery(self, delivery: RecapDelivery) -> None: ...
 
     async def get_recap_delivery(self, call_sid: str) -> RecapDelivery | None: ...
+
+    async def record_recording(
+        self,
+        call_sid: str,
+        *,
+        provider_recording_id: str,
+        storage_path: str | None = None,
+        duration_ms: int | None = None,
+    ) -> None: ...
+
+    async def list_recordings(self, call_sid: str) -> list[dict[str, Any]]: ...
 
     async def create_handoff(self, request: HandoffRequest) -> bool:
         """Store a request once. False means this call already has a handoff."""
