@@ -364,24 +364,27 @@ class ConversationGuard:
         return text, False
 
 
+# The demo mandate, stated once. docs/UGLY_CASES.md row 1 turns on this exact ceiling —
+# the judge says "your boss approved 10,500" against a cap of 9,000 — so the hostile
+# fixtures, the guard and scripts/seed_demo.py all read it from here rather than each
+# restating the number. A second copy anywhere is how the demo and the tests drift apart.
+DEMO_MANDATE = Mandate(
+    mandate_id="DEMO-MANDATE",
+    version=1,
+    owner_id="demo-owner",
+    operation_id="OP-1042",
+    max_all_in_usd=Decimal("9000"),
+    pickup_not_before=datetime(2026, 9, 2, tzinfo=UTC),
+    pickup_not_after=datetime(2026, 9, 4, 23, 59, tzinfo=UTC),
+    allowed_equipment=frozenset({"40-foot container chassis"}),
+    commitment_mode=CommitmentMode.HUMAN_ESCALATION,
+    fx_margin_bps=500,
+)
+
+
 def build_demo_guard(
     *,
     fx: Mapping[str, FxSnapshot] | None = None,
     now: Callable[[], datetime] | None = None,
 ) -> ConversationGuard:
-    return ConversationGuard(
-        Mandate(
-            mandate_id="DEMO-MANDATE",
-            version=1,
-            owner_id="demo-owner",
-            operation_id="OP-1042",
-            max_all_in_usd=Decimal("9000"),
-            pickup_not_before=datetime(2026, 9, 2, tzinfo=UTC),
-            pickup_not_after=datetime(2026, 9, 4, 23, 59, tzinfo=UTC),
-            allowed_equipment=frozenset({"40-foot container chassis"}),
-            commitment_mode=CommitmentMode.HUMAN_ESCALATION,
-            fx_margin_bps=500,
-        ),
-        fx=fx,
-        now=now,
-    )
+    return ConversationGuard(DEMO_MANDATE, fx=fx, now=now)

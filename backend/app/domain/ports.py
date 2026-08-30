@@ -8,19 +8,27 @@ model seam: ``agent/`` depends on ``RecapModel``, not on a vendor SDK.
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from app.domain.models import (
+    AuditEvent,
+    CallBinding,
     CallBrief,
     CallCase,
     CallDirection,
+    Carrier,
+    CarrierContact,
     HandoffEvent,
     HandoffRequest,
+    Offer,
+    Operation,
     Recap,
     RecapContext,
     RecapDelivery,
+    Rfq,
     TranscriptEvent,
 )
+from app.domain.security import Mandate
 
 
 class TranscriptStore(Protocol):
@@ -78,6 +86,80 @@ class TranscriptStore(Protocol):
         conference_name: str | None = None,
         operator_call_sid: str | None = None,
     ) -> None: ...
+
+
+@runtime_checkable
+class OperationRepository(Protocol):
+    """Persistence for the business case: operation, mandate, RFQ, offers, audit trail.
+
+    Two implementations exist and must behave identically — an in-memory one for tests
+    and ``sim_call``, and a Supabase one. That equivalence is what makes the test suite
+    mean anything about production. ``runtime_checkable`` so the suite can assert both
+    still satisfy it.
+
+    Nothing here decides. The repository obeys; ``policy/`` decides.
+    """
+
+    # --- setup writes: how a case comes into existence at all ---
+    async def save_operation(self, operation: Operation) -> None: ...
+
+    async def save_mandate(self, mandate: Mandate) -> None:
+        """Store one immutable mandate version. A version already on file is never
+        rewritten; a change is a new version row (AGENTS.md invariant #2)."""
+
+    async def save_carrier(self, carrier: Carrier) -> None: ...
+
+    async def save_carrier_contact(self, contact: CarrierContact) -> None: ...
+
+    # --- the case ---
+    async def get_operation(self, operation_id: str) -> Operation | None: ...
+
+    async def current_mandate(self, operation_id: str) -> Mandate | None:
+        """The highest-version mandate for the operation.
+
+        Mandates are immutable rows: a change is version+1, never an UPDATE, so "current"
+        is a read and never a race (AGENTS.md invariant #2).
+        """
+
+    async def create_rfq(self, operation_id: str, mandate_id: str) -> Rfq:
+        """Open a soliciting round. Raises ValueError if one is already live for the
+        operation — invariant #5 allows exactly one."""
+
+    async def get_rfq(self, rfq_id: str) -> Rfq | None: ...
+
+    async def claim_awarding(self, rfq_id: str) -> bool:
+        """UPDATE rfqs SET phase='awarding' WHERE id=? AND phase='soliciting'.
+        False means another awarder won the race."""
+
+    async def bind_call(self, call_sid: str, binding: CallBinding) -> None:
+        """Attach a call to its case. Resolved once, before the session is built."""
+
+    async def resolve_call(self, call_sid: str) -> CallBinding | None:
+        """The binding for a call, or None if it was never bound."""
+
+    async def resolve_by_caller_number(self, phone_e164: str) -> list[CallBinding]:
+        """Bindings of calls already bound to the carrier reachable at this number.
+
+        Empty is the normal answer for a stranger. It is not a licence to guess: an
+        unresolvable inbound call escalates and produces no offer (invariant #6).
+        """
+
+    async def save_offer(self, offer: Offer) -> None:
+        """Append one offer. First write wins on ``proposal_id``.
+
+        A later utterance never edits an earlier offer; it arrives here as a second row
+        with its own proposal_id and timestamp (invariant #4). A redelivered proposal_id
+        is a no-op (invariant #7).
+        """
+
+    async def offers_for_rfq(self, rfq_id: str) -> list[Offer]:
+        """Every offer heard in this round, oldest first. Nothing is collapsed."""
+
+    async def record_audit_event(self, event: AuditEvent) -> None:
+        """Append-only, idempotent on event_key. The single writer for audit_events."""
+
+    async def audit_events_for(self, subject_type: str, subject_id: str) -> list[AuditEvent]:
+        """What the system did about one subject, oldest first."""
 
 
 class RecapModel(Protocol):

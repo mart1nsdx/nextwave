@@ -2,11 +2,13 @@
 
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from uuid import UUID
 
 import pytest
 
-from app.domain import CommitmentMode, CostComponent, Mandate, QuoteProposal, ReasonCode
+from app.domain import CommitmentMode, CostComponent, Mandate, Offer, QuoteProposal, ReasonCode
 from app.domain.models import HandoffReason
+from app.repo import InMemoryOperationRepository
 from app.tools import CommitmentCoordinator, ProposalTools, ToolStatus, detected_handoff_reason
 from app.tools.conversation_guard import (
     ESCALATION_RESPONSE,
@@ -14,6 +16,7 @@ from app.tools.conversation_guard import (
     NON_BINDING_RESPONSE,
     build_demo_guard,
 )
+from scripts.seed_demo import DEMO_CARRIERS, DEMO_MANDATE_ROW, DEMO_OPERATION_ID, seed
 
 NOW = datetime(2026, 8, 29, 18, 0, tzinfo=UTC)
 
@@ -191,3 +194,46 @@ def test_direct_handoff_request_is_idempotent() -> None:
 def test_handoff_failure_closes_without_commitment() -> None:
     # The transfer path has no import path to policy commitment code; failure is terminal.
     assert detected_handoff_reason("My boss approved it") is HandoffReason.OUTSIDE_MANDATE
+
+
+async def test_price_change_creates_new_proposal() -> None:
+    """Ugly case 2. The carrier confirms 8,500 and then says 9,200 later in the same call.
+
+    The second number is not an edit of the first. Both offers persist, each with its own
+    proposal_id, source event and timestamp, and the first is still readable exactly as it
+    was heard (AGENTS.md invariant #4). Which one — if either — may become a commitment is
+    a separate question, and policy's, not the repository's.
+    """
+    repo = InMemoryOperationRepository()
+    await seed(repo)
+    rfq = await repo.create_rfq(str(DEMO_OPERATION_ID), str(DEMO_MANDATE_ROW.mandate_id))
+    carrier, contact = DEMO_CARRIERS[0]
+    call_id = UUID("0197b5f0-0000-4000-8000-0000000000bb")
+
+    def _heard(proposal_id: str, amount: str, offset_ms: int) -> Offer:
+        return Offer(
+            rfq_id=rfq.id,
+            carrier_id=carrier.id,
+            carrier_contact_id=contact.id,
+            call_id=call_id,
+            proposal_id=proposal_id,
+            source_event_id=f"EV-{proposal_id}",
+            components=(CostComponent(name="all-in", amount=Decimal(amount), currency="USD"),),
+            cost_is_final=True,
+            pickup_at=datetime(2026, 9, 3, tzinfo=UTC),
+            equipment="40-foot container chassis",
+            transcript_anchor_ms=offset_ms,
+            created_at=NOW,
+        )
+
+    await repo.save_offer(_heard("P-8500", "8500", 4200))
+    await repo.save_offer(_heard("P-9200", "9200", 61000))
+
+    offers = await repo.offers_for_rfq(str(rfq.id))
+    by_id = {o.proposal_id: o for o in offers}
+    assert len(offers) == 2, "the later price overwrote the earlier one"
+    assert by_id["P-8500"].components[0].amount == Decimal("8500")
+    assert by_id["P-9200"].components[0].amount == Decimal("9200")
+    # Each is anchored to its own moment in the transcript, so the conflict is auditable.
+    assert by_id["P-8500"].transcript_anchor_ms == 4200
+    assert by_id["P-9200"].transcript_anchor_ms == 61000
