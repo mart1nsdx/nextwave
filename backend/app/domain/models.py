@@ -8,9 +8,12 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from uuid import UUID
+from typing import Any
+from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+from .security import CostComponent, Mandate, ReasonCode
 
 
 class CallDirection(StrEnum):
@@ -22,6 +25,23 @@ class CallStatus(StrEnum):
     ACTIVE = "active"
     ENDED = "ended"
     FAILED = "failed"
+
+
+class CallPhase(StrEnum):
+    """Which conversation this is. Set by market/, never inferred by the model.
+
+    RFQ and AWARD are separate for the reason in AGENTS.md invariant #5: several carriers
+    may hold confirmed offers at once, but only one call may close. A phase the model
+    could talk itself into is not a phase.
+
+    Lives in domain/ rather than agent/ because telephony/ needs the enum to bind a call
+    to its case, and telephony/ may not import agent/ (tests/test_layering.py).
+    """
+
+    RFQ = "rfq"
+    AWARD = "award"
+    RENEGOTIATION = "renegotiation"
+    INBOUND = "inbound"
 
 
 class HandoffReason(StrEnum):
@@ -149,6 +169,10 @@ class AgreementCandidate(BaseModel):
     This is deliberately not a Commitment. It is model-produced evidence which policy
     must validate against the mandate and the recap-delivery gate before anything can
     reach operation state.
+
+    Superseded by ``Offer``: a model-extracted candidate is now persisted as an Offer with
+    ``status='proposed'``, which policy promotes to ``'eligible'`` or ``'rejected'`` with a
+    ``reason_code``. Kept until the remaining readers move over; do not build on it.
     """
 
     counterparty: str | None = None
@@ -210,3 +234,201 @@ class RecapContext(BaseModel):
     operation_ref: str | None = None
     mandate_summary: str | None = None
     carriers: list[str] = Field(default_factory=list)
+
+
+# --- The case spine -----------------------------------------------------------------
+#
+# Everything above this line is evidence about one phone call. Everything below is the
+# business case that call belongs to: the operation being run, the carriers solicited,
+# the offers heard, and the audit trail of what the system did about them.
+#
+# Mandate and QuoteProposal already live in domain/security.py and are reused as-is.
+
+
+class OperationPhase(StrEnum):
+    """Where the operation is in its life. Advanced by market/, never by the model."""
+
+    DRAFT = "draft"
+    SOLICITING = "soliciting"
+    AWARDING = "awarding"
+    AWARDED = "awarded"
+    FAILED = "failed"
+    CLOSED = "closed"
+
+
+class RfqPhase(StrEnum):
+    """AGENTS.md invariant #5: soliciting and awarding are different phases, and only one
+    RFQ per operation may be in either at a time."""
+
+    SOLICITING = "soliciting"
+    AWARDING = "awarding"
+    AWARDED = "awarded"
+    FAILED = "failed"
+
+
+class OfferStatus(StrEnum):
+    """PROPOSED is what a call may produce. Everything past it is set by policy/."""
+
+    PROPOSED = "proposed"
+    ELIGIBLE = "eligible"
+    REJECTED = "rejected"
+    ACCEPTED = "accepted"
+    EXPIRED = "expired"
+
+
+class CommitmentState(StrEnum):
+    """UNKNOWN is a first-class outcome, not an error: an official email that timed out
+    after dispatch may have begun is never re-sent and never claimed (ugly case 10)."""
+
+    PREPARED = "prepared"
+    RECAP_SENT = "recap_sent"
+    COMMITTED = "committed"
+    FAILED = "failed"
+    UNKNOWN = "unknown"
+
+
+class AuditSubjectType(StrEnum):
+    CALL = "call"
+    HANDOFF = "handoff"
+    OFFER = "offer"
+    COMMITMENT = "commitment"
+    RFQ = "rfq"
+
+
+class AuditEventKind(StrEnum):
+    """What the system did. Never what somebody said — that is a TranscriptEvent."""
+
+    GUARD_DIRECTIVE = "guard_directive"
+    POLICY_DECISION = "policy_decision"
+    PROPOSAL_RECORDED = "proposal_recorded"
+    ESCALATION_REQUESTED = "escalation_requested"
+    CLARIFICATION_ASKED = "clarification_asked"
+    MESSAGE_SENT = "message_sent"
+    STATE_TRANSITION = "state_transition"
+
+
+class Operation(BaseModel):
+    """The shipment leg being run. The business case a call belongs to."""
+
+    model_config = ConfigDict(frozen=True)
+
+    id: UUID = Field(default_factory=uuid4)
+    tenant_id: str = Field(min_length=1)
+    reference: str = Field(min_length=1)
+    container_number: str | None = None
+    origin: str = Field(min_length=1)
+    destination: str = Field(min_length=1)
+    eta: datetime | None = None
+    phase: OperationPhase = OperationPhase.DRAFT
+    created_at: datetime | None = None
+
+
+class Carrier(BaseModel):
+    """A trucking company. ``is_verified`` is prior knowledge, never something a caller
+    can assert about itself on the phone."""
+
+    model_config = ConfigDict(frozen=True)
+
+    id: UUID = Field(default_factory=uuid4)
+    tenant_id: str = Field(min_length=1)
+    name: str = Field(min_length=1)
+    is_verified: bool = False
+    created_at: datetime | None = None
+
+
+class CarrierContact(BaseModel):
+    """One reachable human at a carrier. ``phone_e164`` is globally unique, which is what
+    makes an inbound number resolvable at all."""
+
+    model_config = ConfigDict(frozen=True)
+
+    id: UUID = Field(default_factory=uuid4)
+    carrier_id: UUID
+    display_name: str | None = None
+    phone_e164: str = Field(min_length=1)
+    email: str | None = None
+    created_at: datetime | None = None
+
+
+class Rfq(BaseModel):
+    """One quote-gathering round against one mandate version. Creates no obligation."""
+
+    model_config = ConfigDict(frozen=True)
+
+    id: UUID = Field(default_factory=uuid4)
+    operation_id: UUID
+    mandate_id: UUID
+    phase: RfqPhase = RfqPhase.SOLICITING
+    created_at: datetime | None = None
+
+
+class Offer(BaseModel):
+    """A quote heard on a call, persisted exactly as heard.
+
+    An Offer is not a commitment and not an edit. A later utterance with a different price
+    is a *new* Offer with its own ``proposal_id`` and timestamp; nothing overwrites an
+    earlier one (AGENTS.md invariant #4). ``status`` starts at PROPOSED and is only moved
+    by policy/, which records why in ``reason_code``.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    id: UUID = Field(default_factory=uuid4)
+    rfq_id: UUID
+    carrier_id: UUID
+    carrier_contact_id: UUID
+    call_id: UUID
+    proposal_id: str = Field(min_length=1)
+    source_event_id: str = Field(min_length=1)
+    components: tuple[CostComponent, ...] = Field(min_length=1)
+    cost_is_final: bool = False
+    pickup_at: datetime | None = None
+    equipment: str | None = None
+    valid_until: datetime | None = None
+    transcript_anchor_ms: int | None = Field(default=None, ge=0)
+    carrier_confirmed_exact_recap: bool = False
+    confirmed_at: datetime | None = None
+    status: OfferStatus = OfferStatus.PROPOSED
+    reason_code: ReasonCode | None = None
+    created_at: datetime | None = None
+
+
+class AuditEvent(BaseModel):
+    """Append-only evidence of what the *system* did, keyed on ``event_key``.
+
+    The dividing line against TranscriptEvent is deliberate and load-bearing: a transcript
+    event is evidence of what was said, an audit event is evidence of what was done. If a
+    row would be a quote of a human, it does not belong here.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    event_key: str = Field(min_length=1)
+    subject_type: AuditSubjectType
+    subject_id: str = Field(min_length=1)
+    kind: AuditEventKind
+    call_id: UUID | None = None
+    from_state: str | None = None
+    to_state: str | None = None
+    reason_code: str | None = None
+    audio_offset_ms: int | None = Field(default=None, ge=0)
+    detail: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime | None = None
+
+
+class CallBinding(BaseModel):
+    """Everything a live call needs to know about which case it belongs to.
+
+    Resolved once, before the session is built. Frozen because a counterparty must
+    never be able to move a call to a different operation mid-conversation.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    call_id: UUID
+    call_sid: str
+    operation: Operation
+    mandate: Mandate
+    phase: CallPhase
+    carrier: Carrier | None = None
+    carrier_contact: CarrierContact | None = None

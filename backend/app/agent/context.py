@@ -10,25 +10,15 @@ so that adding a field to the mandate does not silently change what the agent sa
 """
 
 from decimal import Decimal
-from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
+# CallPhase is domain vocabulary, not agent wording: telephony/ needs it to bind a call
+# to its case and may not import agent/. Re-exported here so every existing import site
+# keeps working.
+from app.domain.models import CallPhase
+
 __all__ = ["CallContext", "CallPhase"]
-
-
-class CallPhase(StrEnum):
-    """Which conversation this is. Set by market/, never inferred by the model.
-
-    RFQ and AWARD are separate for the reason in AGENTS.md invariant #5: several carriers
-    may hold confirmed offers at once, but only one call may close. A phase the model
-    could talk itself into is not a phase.
-    """
-
-    RFQ = "rfq"
-    AWARD = "award"
-    RENEGOTIATION = "renegotiation"
-    INBOUND = "inbound"
 
 
 class CallContext(BaseModel):
