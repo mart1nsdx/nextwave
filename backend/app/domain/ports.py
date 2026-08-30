@@ -87,6 +87,8 @@ class RecapModel(Protocol):
 
     async def brief(self, transcript: str) -> CallBrief: ...
 
+    async def handoff_summary(self, request: HandoffRequest, transcript: str) -> str: ...
+
 
 class RecapSender(Protocol):
     """Delivers the recap by email. Returns the outcome; never raises for a send failure."""

@@ -13,12 +13,18 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from app.agent.prompts import BRIEF_SYSTEM, RECAP_SYSTEM, RECAP_USER_TEMPLATE
+from app.agent.prompts import (
+    BRIEF_SYSTEM,
+    HANDOFF_SUMMARY_SYSTEM,
+    RECAP_SYSTEM,
+    RECAP_USER_TEMPLATE,
+)
 from app.domain.models import (
     AgreementCandidate,
     BriefAction,
     BriefMention,
     CallBrief,
+    HandoffRequest,
     Recap,
     RecapContext,
 )
@@ -40,6 +46,10 @@ class _RecapDraft(BaseModel):
 class _BriefDraft(BaseModel):
     actions: list[BriefAction] = Field(default_factory=list)
     mentions: list[BriefMention] = Field(default_factory=list)
+
+
+class _HandoffSummaryDraft(BaseModel):
+    summary: str = Field(min_length=1, max_length=500)
 
 
 def _context_block(context: RecapContext) -> str:
@@ -105,3 +115,24 @@ class OpenAIRecapModel:
         if draft is None:
             raise RuntimeError("brief model returned no parsed content")
         return CallBrief(call_sid="", model=self._model, **draft.model_dump())
+
+    async def handoff_summary(self, request: HandoffRequest, transcript: str) -> str:
+        completion = await self._client.chat.completions.parse(
+            model=self._model,
+            messages=[
+                {"role": "system", "content": HANDOFF_SUMMARY_SYSTEM},
+                {
+                    "role": "user",
+                    "content": (
+                        f"Handoff reason: {request.reason.value}\n"
+                        f"Handoff note: {request.note}\n"
+                        f"Transcript:\n{transcript[-6000:]}"
+                    ),
+                },
+            ],
+            response_format=_HandoffSummaryDraft,
+        )
+        draft = completion.choices[0].message.parsed
+        if draft is None:
+            raise RuntimeError("handoff summary model returned no parsed content")
+        return str(draft.summary)

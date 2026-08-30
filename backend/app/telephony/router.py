@@ -119,11 +119,8 @@ def create_router(
         if request is None:
             return Response(content=unavailable_handoff(), media_type="application/xml")
         base = settings.public_base_url.rstrip("/")
-        message = (
-            f"Volta solicita handoff. Razón: {request.reason.value}. "
-            f"Nota: {request.note}. No hay ningún compromiso confirmado. "
-            "Marque uno para aceptar y unirse al carrier."
-        )
+        summary = await handoff.brief_for(handoff_id)
+        message = f"{summary} Marque uno para aceptar y unirse al carrier."
         return Response(
             content=operator_brief(f"{base}/twilio/handoff/{handoff_id}/accept", message),
             media_type="application/xml",

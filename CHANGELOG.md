@@ -25,6 +25,12 @@ invented timestamps is worse than no log, because the ordering lies silently.
 
 ---
 
+## 2026-08-29T19:39-05:00 · agent, telephony, domain · Codex
+The live handoff now starts a parallel LLM briefing from persisted transcript evidence and
+reads it privately to the accepting operator; it falls back after six seconds without
+blocking the transfer.
+→ Affects: telephony and operations. The spoken briefing is context only; it never authorizes a commitment.
+
 ## 2026-08-29T18:29-05:00 · domain, policy, tools, repo, supabase · Codex
 Added the audited handoff contract: deterministic authorization, one idempotent request
 per call, append-only lifecycle records, and the corresponding Supabase migration.

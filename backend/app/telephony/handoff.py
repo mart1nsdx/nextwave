@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 
 import structlog
@@ -15,14 +16,20 @@ from app.domain.ports import TranscriptStore
 from .twiml import caller_hold_conference, unavailable_handoff
 
 log = structlog.get_logger(__name__)
+HandoffBriefProvider = Callable[[HandoffRequest], Awaitable[str]]
+_BRIEF_TIMEOUT_SECONDS = 6.0
 
 
 class TwilioHandoff:
     """Places the caller on hold, privately briefs the operator, then bridges on consent."""
 
-    def __init__(self, settings: Settings, store: TranscriptStore) -> None:
+    def __init__(
+        self, settings: Settings, store: TranscriptStore, brief_provider: HandoffBriefProvider
+    ) -> None:
         self._settings = settings
         self._store = store
+        self._brief_provider = brief_provider
+        self._brief_tasks: dict[str, asyncio.Task[str]] = {}
 
     def _client(self) -> Client:
         if not self._settings.twilio_account_sid or not self._settings.twilio_auth_token:
@@ -41,6 +48,11 @@ class TwilioHandoff:
     async def start(self, request: HandoffRequest) -> None:
         client = self._client()
         handoff_id = str(request.handoff_id)
+        task: asyncio.Task[str] = asyncio.create_task(
+            self._generate_brief(request), name=f"handoff-brief:{handoff_id}"
+        )
+        task.add_done_callback(_consume_brief_failure)
+        self._brief_tasks[handoff_id] = task
         conference_name = f"volta-handoff-{request.handoff_id.hex}"
         base = self._base()
         await self._store.update_handoff_transport(handoff_id, conference_name=conference_name)
@@ -77,6 +89,30 @@ class TwilioHandoff:
         )
         log.info("handoff_operator_dialed", call_id=request.call_sid, handoff_id=handoff_id)
 
+    async def brief_for(self, handoff_id: str) -> str:
+        """Return the model briefing without making the operator wait forever."""
+
+        request = await self._store.get_handoff(handoff_id)
+        if request is None:
+            return "No hay contexto disponible. No hay ningún compromiso confirmado."
+        task = self._brief_tasks.get(handoff_id)
+        if task is None:
+            return _fallback_brief(request)
+        try:
+            summary = await asyncio.wait_for(asyncio.shield(task), timeout=_BRIEF_TIMEOUT_SECONDS)
+        except Exception as exc:
+            log.warning(
+                "handoff_brief_unavailable", call_id=request.call_sid, error=type(exc).__name__
+            )
+            return _fallback_brief(request)
+        await self._store.record_handoff_event(
+            _event(request, HandoffStatus.HUMAN_DIALING, summary, suffix="brief-ready")
+        )
+        return summary
+
+    async def _generate_brief(self, request: HandoffRequest) -> str:
+        return await self._brief_provider(request)
+
     async def fail(self, handoff_id: str, detail: str) -> None:
         request = await self._store.get_handoff(handoff_id)
         if request is None or request.status in {HandoffStatus.CONNECTED, HandoffStatus.COMPLETED}:
@@ -91,6 +127,20 @@ class TwilioHandoff:
             )
         except Exception:
             log.exception("handoff_failure_message_failed", call_id=request.call_sid)
+
+
+def _fallback_brief(request: HandoffRequest) -> str:
+    return (
+        f"Handoff solicitado por {request.reason.value}. {request.note}. "
+        "No hay ningún compromiso confirmado."
+    )
+
+
+def _consume_brief_failure(task: asyncio.Task[str]) -> None:
+    """Retrieve background errors even if the operator answered after the timeout."""
+
+    if not task.cancelled() and task.exception() is not None:
+        log.warning("handoff_brief_generation_failed", error=repr(task.exception()))
 
 
 def _event(

@@ -518,6 +518,12 @@ are evidence for deterministic review, never commitments."""
 BRIEF_SYSTEM = """Extract a factual call brief. Anchor actions and mentions to the audio
 offsets supplied in the transcript. Do not infer missing facts."""
 
+HANDOFF_SUMMARY_SYSTEM = """Write a private Spanish handoff briefing for a human colleague
+who is about to join this live call. Use only facts in the transcript and handoff request.
+In at most two short sentences, state the reason, the latest material terms or request, and
+that no commitment has been confirmed. Never invent a figure, date, identity, or authority.
+This is context for the colleague, never an authorization or a message to the carrier."""
+
 RECAP_USER_TEMPLATE = """{context_block}Transcript (each line prefixed with its audio
 offset in milliseconds):
 

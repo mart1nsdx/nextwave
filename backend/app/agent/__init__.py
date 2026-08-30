@@ -27,7 +27,7 @@ from .prompts import (
     escalation_line,
     recovery_line,
 )
-from .recap import build_brief, build_recap
+from .recap import build_brief, build_handoff_summary, build_recap
 
 __all__ = [
     "DEMO_CONTEXT",
@@ -40,6 +40,7 @@ __all__ = [
     "OpenAIRecapModel",
     "build_agent",
     "build_brief",
+    "build_handoff_summary",
     "build_recap",
     "build_greeting",
     "build_system_prompt",

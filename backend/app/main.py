@@ -5,12 +5,13 @@ import logging
 import structlog
 from fastapi import FastAPI, HTTPException
 
-from app.agent import OpenAIRecapModel, build_brief, build_recap
+from app.agent import OpenAIRecapModel, build_brief, build_handoff_summary, build_recap
 from app.config import Settings, get_settings
 from app.domain.models import (
     CallBrief,
     CallCase,
     HandoffReason,
+    HandoffRequest,
     Recap,
     RecapContext,
     Speaker,
@@ -80,7 +81,12 @@ def create_app(
         settings.openai_recap_model or settings.openai_agent_model,
     )
     recap_service = RecapService(ledger, store, recap_model)
-    twilio_handoff = TwilioHandoff(settings, store)
+    async def generate_handoff_brief(request: HandoffRequest) -> str:
+        return await build_handoff_summary(
+            request, await ledger.transcript_text(request.call_sid), recap_model
+        )
+
+    twilio_handoff = TwilioHandoff(settings, store, generate_handoff_brief)
     handoff_tool = HandoffTool(store, twilio_handoff.start)
     sequence_by_call: dict[str, int] = {}
 
