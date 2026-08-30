@@ -95,3 +95,26 @@ async def test_a_model_failure_does_not_leave_the_line_silent() -> None:
 
     assistant = [str(m["content"]) for m in session.history if m.get("role") == "assistant"]
     assert RECOVERY_LINE in assistant, "a failed turn must still say something"
+
+
+async def test_final_transcripts_include_both_call_sides_for_post_call_evidence() -> None:
+    script = [ScriptedUtterance("nueve mil pesos", 100, 400)]
+    recorded: list[tuple[str, str, int, str]] = []
+
+    async def sink(call_id: str, track: object, speaker: object, offset: int, text: str) -> None:
+        recorded.append((str(track), str(speaker), offset, text))
+
+    session = VoiceSession(
+        stt=FakeStt(script),
+        tts=FakeTts(),
+        reasoner=OneLinerThinker(),
+        vad=VadSettings(barge_in_min_ms=120),
+        greeting="Buenas.",
+        on_final_transcript=sink,
+    )
+    source = SimLine(script, tail_ms=400, pace_s=0)
+    sink_line = SimLine(script, tail_ms=400, pace_s=0)
+    await session.run(source, sink_line)
+
+    assert ("inbound", "caller", 100, "nueve mil pesos") in recorded
+    assert any(track == "outbound" and speaker == "agent" for track, speaker, _, _ in recorded)

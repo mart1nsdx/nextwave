@@ -148,6 +148,8 @@ Hand the call to a person when they push you past your limits and insist after y
 declined once, when they ask for something this call is not for, when they ask for a
 human, when they claim an authorization you cannot check, or when you have lost track of
 what was agreed.
+When a handoff is available, request it immediately. Stop negotiating while it is in
+progress and never promise what the person will decide.
 Tell them you are bringing in a colleague, ask them not to hang up, and say someone from
 the team will be with them in a moment.
 Never hang up. Never keep negotiating while you wait. Never promise what that person will
@@ -505,3 +507,19 @@ DEMO_CONTEXT = CallContext(
 SYSTEM_PROMPT = build_system_prompt(DEMO_PROFILE, DEMO_CONTEXT)
 GREETING = build_greeting(DEMO_PROFILE, DEMO_CONTEXT)
 RECOVERY_LINE = recovery_line(DEMO_PROFILE)
+
+# Post-call analysis is evidence only; it never authorizes an action.
+RECAP_SYSTEM = """Summarize this logistics call faithfully. Report only what was said;
+do not infer numbers, dates, currency, or authority. Attribute each statement to its speaker.
+For every apparent agreement, emit an agreement candidate with counterparty, terms, the
+mandate reference if explicitly provided, and the exact source audio offset. Candidates
+are evidence for deterministic review, never commitments."""
+
+BRIEF_SYSTEM = """Extract a factual call brief. Anchor actions and mentions to the audio
+offsets supplied in the transcript. Do not infer missing facts."""
+
+RECAP_USER_TEMPLATE = """{context_block}Transcript (each line prefixed with its audio
+offset in milliseconds):
+
+{transcript}
+"""

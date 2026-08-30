@@ -36,8 +36,8 @@ class VadSettings(BaseModel):
     endpointing_ms: int = Field(default=100, ge=10)
     utterance_end_ms: int = Field(default=1000, ge=100)
     barge_in_enabled: bool = True
-    barge_in_rms_threshold: float = Field(default=900.0, gt=0)
-    barge_in_min_ms: int = Field(default=120, ge=0)
+    barge_in_rms_threshold: float = Field(default=1800.0, gt=0)
+    barge_in_min_ms: int = Field(default=300, ge=0)
     min_silence_before_reply_ms: int = Field(default=250, ge=0)
 
     @classmethod
@@ -68,7 +68,7 @@ class EnergyVad:
 
     The consecutive requirement is what keeps a cough, a door, or a burst of line noise
     from cutting the agent off mid-sentence. A single loud frame is not an interruption;
-    120 ms of sustained energy is.
+    300 ms of sustained, speech-level energy is.
     """
 
     def __init__(self, settings: VadSettings) -> None:

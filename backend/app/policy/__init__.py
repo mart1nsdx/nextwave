@@ -8,3 +8,7 @@ Unit-testable with zero mocks. The price cap is an `if` statement, never a promp
 Invariant #1 ("the LLM never writes a commitment") holds because this package cannot
 reach anything that talks to a model. Enforced by tests/test_layering.py.
 """
+
+from app.policy.handoff import handoff_is_authorized
+
+__all__ = ["handoff_is_authorized"]

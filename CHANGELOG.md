@@ -25,6 +25,38 @@ invented timestamps is worse than no log, because the ordering lies silently.
 
 ---
 
+## 2026-08-29T18:29-05:00 · domain, policy, tools, repo, supabase · Codex
+Added the audited handoff contract: deterministic authorization, one idempotent request
+per call, append-only lifecycle records, and the corresponding Supabase migration.
+→ Affects: telephony and dashboard. Apply the new migration before using persisted handoffs.
+
+## 2026-08-29T18:09-05 · voice, config · Codex
+Raised the local barge-in gate from 900 RMS for 120 ms to 1800 RMS for 300 ms and added
+a regression test for sustained moderate background noise.
+→ Affects: anyone testing calls. Restart the backend after pulling; tune the two
+  `VAD_BARGE_IN_*` variables only if the actual phone line still needs calibration.
+
+## 2026-08-29T17:27-05 · config, repo, supabase · Codex
+Replaced the legacy `SUPABASE_SERVICE_ROLE_KEY` configuration with
+`SUPABASE_SECRET_KEY` for backend-only evidence persistence.
+→ Affects: everyone running the backend. Replace the old `.env` variable with the
+  Supabase `sb_secret_...` key; never expose it to the dashboard.
+
+## 2026-08-29T17:23-05 · supabase, domain, agent · Codex
+Added `call_recaps.agreement_candidates` as a non-null JSONB array for audio-anchored
+agreement evidence. The model writes candidates only; deterministic policy remains the
+sole future authority that can write commitments.
+→ Affects: dashboard and policy. Read the candidates from the persisted recap; never
+  treat them as `COMMITTED` without the policy and written-recap gates.
+
+## 2026-08-29T16:47-05 · voice, telephony, ledger, repo, agent · Codex
+The live bidirectional call now opens an evidence case, persists final caller and agent
+turns with Twilio audio offsets, and produces persisted recap and call-brief reports when
+Twilio closes the call. Report output contains audio-anchored agreement candidates only;
+it does not write commitments or send any message.
+→ Affects: dashboard and policy. Read `/calls/{call_sid}/transcript`, `/recap`, and
+  `/brief`; a later deterministic policy step must validate candidates before commitment.
+
 ## 2026-08-29T17:36-0500 · agent, domain · Nacho/claude
 The system prompt is no longer one hardcoded string. `domain.CompanyProfile` (new — the
 dashboard's pre-registration) and `agent.CallContext` compose it per call:
@@ -48,6 +80,13 @@ did. That failed only once a real call reached the model. Also `AudioSource` gai
   Model settings are tuned for the phone (minimal reasoning, low verbosity, 12s timeout):
   at its defaults `gpt-5-mini` took nine seconds to answer, which on a call is a hang-up.
   If you change `OPENAI_AGENT_MODEL` to a non-reasoning model, drop the `reasoning=` field.
+
+## 2026-08-29T14:10-0500 · domain, repo, ledger, agent, notify, supabase · Martin/claude
+Added the call-evidence, post-call recap and recap-delivery building blocks, including
+the Supabase migration. The incompatible Twilio transport is adapted separately to the
+existing bidirectional voice path.
+→ Affects: everyone. Evidence and recap types are shared contracts; run the new Supabase
+  migration before enabling persisted call review.
 
 ## 2026-08-29T14:02-0500 · scripts · Nacho/claude
 `uv run python -m scripts.point_number` repoints the Twilio number at whatever tunnel is
