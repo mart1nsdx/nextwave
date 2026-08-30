@@ -11,7 +11,7 @@ a bidirectional stream accepts `media`, `mark`, and `clear` back.
 import asyncio
 import base64
 import json
-from collections.abc import AsyncIterator, Callable, Coroutine
+from collections.abc import AsyncIterator, Callable, Coroutine, Mapping
 from typing import Any
 
 import structlog
@@ -41,6 +41,7 @@ class MediaStreamTransport:
         self._inbound: asyncio.Queue[InboundFrame | None] = asyncio.Queue()
         self._stream_sid = ""
         self._call_sid = ""
+        self._custom_parameters: dict[str, str] = {}
         self._last_offset_ms = 0
         self._pending_marks: set[str] = set()
         self._started = asyncio.Event()
@@ -55,6 +56,17 @@ class MediaStreamTransport:
     @property
     def stream_sid(self) -> str:
         return self._stream_sid
+
+    @property
+    def custom_parameters(self) -> Mapping[str, str]:
+        """The <Parameter> values we put on the <Stream>, echoed back in `start`.
+
+        This is how a call arrives already knowing which case it is: we wrote the case id
+        into the TwiML before Twilio dialled, and it comes back on the stream's first
+        message. Empty for an inbound call, and empty before `start` — always read it
+        after `wait_until_started()`.
+        """
+        return dict(self._custom_parameters)
 
     @property
     def last_offset_ms(self) -> int:
@@ -136,6 +148,13 @@ class MediaStreamTransport:
                     start = message["start"]
                     self._stream_sid = message.get("streamSid", start.get("streamSid", ""))
                     self._call_sid = start.get("callSid", "")
+                    # Values are strings in Twilio's payload, but coerce anyway: this
+                    # feeds case resolution, and a non-string key would blow up a lookup
+                    # on a live call rather than in a test.
+                    self._custom_parameters = {
+                        str(name): str(value)
+                        for name, value in (start.get("customParameters") or {}).items()
+                    }
                     self._started.set()
                     log.info("stream_started", call_id=self._call_sid, stream_sid=self._stream_sid)
                 elif event == "mark":

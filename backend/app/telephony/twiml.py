@@ -8,16 +8,24 @@ when the counterparty barges in. <Start> is one-way and could not do that.
 from twilio.twiml.voice_response import Connect, Dial, Gather, Say, VoiceResponse
 
 
-def connect_stream(websocket_url: str) -> str:
+def connect_stream(websocket_url: str, *, case_id: str | None = None) -> str:
     """TwiML that hands the call's audio to our WebSocket, in both directions.
 
     Note the call stays up as long as the stream does. There is no <Say> here: every
     word the agent speaks comes from the TTS stream, so that what is said and what is
     logged are the same bytes.
+
+    `case_id` rides along as a <Parameter>, which Twilio hands back in the Media Streams
+    `start` event as `start.customParameters`. That is why the socket knows which
+    operation it is negotiating on its very first message: no CallSid correlation, no
+    database read, and therefore no window in which the stream is live but unbound.
+    It is omitted for an inbound call, which by definition arrives with no case.
     """
     response = VoiceResponse()
     connect = Connect()
-    connect.stream(url=websocket_url)
+    stream = connect.stream(url=websocket_url)
+    if case_id:
+        stream.parameter(name="case_id", value=case_id)
     response.append(connect)
     return str(response)
 

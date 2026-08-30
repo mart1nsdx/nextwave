@@ -7,8 +7,9 @@ from fastapi import APIRouter, HTTPException, Request, Response, WebSocket
 from pydantic import BaseModel, Field
 
 from app.config import Settings
+from app.domain.binding import CallBinding
 from app.domain.models import CallDirection, HandoffEvent, HandoffReason, HandoffStatus
-from app.domain.ports import TranscriptStore
+from app.domain.ports import CaseResolver, OutboundCases, TranscriptStore
 from app.voice.session import FinalTranscriptSink, VoiceSession
 
 from .handoff import TwilioHandoff
@@ -27,10 +28,11 @@ from .twiml import (
 log = structlog.get_logger(__name__)
 CallFinished = Callable[[str], Awaitable[None]]
 
-# Builds the conversation for one call. It takes the direction because that is what
-# decides the phase, and it is a callback rather than an import because telephony/ may not
-# reach agent/ — the prompt is composed in the composition root and handed down.
-SessionFactory = Callable[[CallDirection], VoiceSession]
+# Builds the conversation for one call. It takes the binding — the case, the operation and
+# the mandate this call runs under — because that is what the prompt is composed from. It
+# is a callback rather than an import because telephony/ may not reach agent/: the prompt
+# is composed in the composition root and handed down.
+SessionFactory = Callable[[CallBinding], VoiceSession]
 
 
 def _direction(value: str) -> CallDirection:
@@ -45,6 +47,8 @@ def create_router(
     handoff: TwilioHandoff,
     on_handoff: Callable[[str, HandoffReason, int, str], Awaitable[bool]],
     make_session: SessionFactory,
+    resolve_case: CaseResolver,
+    outbound_cases: OutboundCases,
 ) -> APIRouter:
     """Create the sole Twilio router. It keeps Twilio out of the evidence layers."""
     router = APIRouter(tags=["telephony"])
@@ -68,9 +72,12 @@ def create_router(
                 from_number=str(form.get("From", "")) or None,
                 to_number=str(form.get("To", "")) or None,
             )
-        log.info("call_connected", call_id=call_sid)
+        # Present only on a call we placed: place_call put it on the TwiML URL. An
+        # inbound call has none, which is what sends it down the correlation path.
+        case_id = request.query_params.get("case_id")
+        log.info("call_connected", call_id=call_sid, case_id=case_id)
         return Response(
-            content=connect_stream(websocket_url(settings.public_base_url)),
+            content=connect_stream(websocket_url(settings.public_base_url), case_id=case_id),
             media_type="application/xml",
         )
 
@@ -91,15 +98,38 @@ def create_router(
         transport = MediaStreamTransport(websocket)
 
         async def converse(active: MediaStreamTransport) -> None:
-            # Built after `start`, not before: which conversation this is depends on who
-            # called whom, and the CallSid that answers that only arrives with the stream.
-            # Twilio sends `start` immediately, so this costs no audible delay.
+            # Built after `start`, not before: which case this call is about arrives with
+            # the stream, in the custom parameters we put on the <Stream>. Twilio sends
+            # `start` immediately, so this costs no audible delay, and wait_until_started
+            # sets its event in a `finally`, so a call that dies first cannot hang here.
             await active.wait_until_started()
             if not active.call_id:
                 return  # the line dropped before it began; no session to open
-            case = await store.get_case(active.call_id)
-            direction = case.direction if case is not None else CallDirection.INBOUND
-            await make_session(direction).run(active, active)
+
+            binding = await resolve_case(active.call_id, active.custom_parameters)
+            if binding is None:
+                # Fail closed (invariant #6). There used to be a default operation here,
+                # and it is the exact bug this path exists to remove: an unidentified
+                # caller was answered under someone else's mandate. A call we cannot
+                # place is a call for a person, not a call to guess at.
+                log.error("case_unresolved", call_id=active.call_id)
+                await on_handoff(
+                    active.call_id,
+                    HandoffReason.AMBIGUOUS_CRITICAL_TERM,
+                    active.last_offset_ms,
+                    "call could not be bound to exactly one case",
+                )
+                return
+
+            log.info(
+                "call_bound",
+                call_id=active.call_id,
+                case_id=binding.case_id,
+                operation_ref=binding.operation_ref,
+                mandate_id=binding.mandate.mandate_id,
+                mandate_version=binding.mandate.version,
+            )
+            await make_session(binding).run(active, active)
 
         await transport.pump_with(converse)
         active_handoff = await store.get_handoff_for_call(transport.call_id)
@@ -200,11 +230,18 @@ def create_router(
 
     @router.post("/calls")
     async def start_call(request: CallRequest) -> dict[str, str]:
+        # The case is written before the number is dialled, never the other way round.
+        # Twilio can answer, stream and reach /twilio/media before `calls.create` has
+        # even returned to us; if the case were written afterwards, that stream would
+        # arrive at a case that does not exist yet and fail closed on a call we
+        # ourselves authorized. The CallSid is patched in once Twilio issues it.
+        case_id = await outbound_cases.reserve(request.to)
         try:
-            call_sid = await place_call(request.to, settings)
+            call_sid = await place_call(request.to, settings, case_id=case_id)
         except ValueError as missing:
             raise HTTPException(status_code=503, detail=str(missing)) from missing
-        return {"call_id": call_sid}
+        await outbound_cases.bind(case_id, call_sid)
+        return {"call_id": call_sid, "case_id": case_id}
 
     return router
 

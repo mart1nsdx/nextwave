@@ -7,6 +7,7 @@ Types only — no behaviour, no I/O, no decisions. If a function here would need
 whether something is *allowed*, it belongs in policy/ instead.
 """
 
+from app.domain.binding import CallBinding
 from app.domain.company import BusinessType, CompanyProfile
 from app.domain.models import (
     BriefAction,
@@ -26,22 +27,30 @@ from app.domain.models import (
 )
 from app.domain.ports import (
     CallCompletedHook,
+    CaseResolver,
+    OutboundCases,
     RecapModel,
     RecapSender,
     TranscriptSink,
     TranscriptStore,
 )
+from app.domain.security import CommitmentMode, Mandate
 
 __all__ = [
     "BriefAction",
     "BriefMention",
     "BusinessType",
+    "CallBinding",
     "CallBrief",
     "CallCase",
     "CallCompletedHook",
     "CallDirection",
     "CallStatus",
+    "CaseResolver",
+    "CommitmentMode",
     "CompanyProfile",
+    "Mandate",
+    "OutboundCases",
     "Recap",
     "RecapContext",
     "RecapDelivery",

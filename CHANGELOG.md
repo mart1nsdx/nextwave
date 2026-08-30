@@ -25,6 +25,42 @@ invented timestamps is worse than no log, because the ordering lies silently.
 
 ---
 
+## 2026-08-29T22:21-0500 · telephony, voice, domain, policy, main · Nacho/agent
+A call is now bound to one case and one mandate, or it does not happen. `/twilio/media`
+used to fall back to a default direction and the demo operation when it could not place a
+call; that fallback is gone and replaced by a `CaseResolver` lookup that escalates
+(`AMBIGUOUS_CRITICAL_TERM`) when it cannot name exactly one case — invariant #6, and
+docs/UGLY_CASES.md row 17.
+- New `domain/CallBinding` (call_sid, case_id, operation_ref, direction, `Mandate`) and
+  `domain/security.py` carrying `Mandate` / `CommitmentMode`. **`Mandate` is the same
+  definition as the one on `feat/case-spine`, field for field, so the two merge cleanly —
+  do not fork it.** Nothing here depends on either contested spine PR; the in-memory
+  `InMemoryCaseBindings` in `main.py` is the seam that gets re-pointed at whichever wins.
+- `connect_stream(url, *, case_id=...)` emits a `<Parameter>`, and
+  `MediaStreamTransport.custom_parameters` reads it back from `start.customParameters`.
+  An outbound call therefore knows its case on the stream's first message: no CallSid
+  correlation, no database read, no race.
+- `place_call(to, settings, *, case_id)` — case id required, on the TwiML URL.
+  `POST /calls` now writes the case **before** dialling and patches in the CallSid after;
+  it returns `case_id` alongside `call_id`.
+- `create_router(...)` takes two more arguments (`resolve_case`, `outbound_cases`), and
+  `make_session` now takes a `CallBinding` rather than a `CallDirection`.
+- `build_session(...)` takes a required `binding`; `VoiceSession` exposes `.binding` and
+  binds `mandate_id` / `operation_ref` into its structlog context for the whole call.
+- New `policy/quote_escalation_reason(mandate, all_in_usd)` — the cap as an `if`.
+  Deliberately narrow and temporary: `policy/engine.py:evaluate_quote` on the case-spine
+  branch subsumes it exactly. Delete this when that merges.
+- `complete_call()` and `POST /calls/{sid}/recap` now pass a populated `RecapContext`
+  (operation ref + one-line mandate summary) instead of nothing.
+
+Known gap, deliberate: the mandate's ceiling is all-in **USD** and the figure the agent
+negotiates with is in the operation's own currency. They are not joined, because joining
+them needs the approved immutable FX snapshot invariant #9 requires and inventing a rate
+here would be exactly the failure that invariant prevents.
+→ Affects: anyone calling `create_router`, `build_session`, `place_call` or
+`connect_stream` — all four signatures changed. Anyone about to add a `Mandate` type:
+it already exists, in `domain/security.py`.
+
 ## 2026-08-29T20:01-0500 · agent, voice, telephony, main · Nacho/Claude
 Every live call was running one prompt composed at import (`agent.SYSTEM_PROMPT`), so the
 per-company/per-call composer was unreachable: one company, one lane, phase always RFQ —

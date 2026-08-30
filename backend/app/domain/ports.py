@@ -8,8 +8,10 @@ model seam: ``agent/`` depends on ``RecapModel``, not on a vendor SDK.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Protocol
 
+from app.domain.binding import CallBinding
 from app.domain.models import (
     CallBrief,
     CallCase,
@@ -104,3 +106,39 @@ class CallCompletedHook(Protocol):
     """What ``telephony/`` calls when Twilio reports a call finished. Wired to RecapService."""
 
     async def __call__(self, call_sid: str) -> None: ...
+
+
+class CaseResolver(Protocol):
+    """How ``telephony/`` learns which case a live call is about.
+
+    A Protocol for the same reason ``TranscriptStore`` is one: the layering contract
+    forbids ``telephony/`` from importing ``repo/``, so the composition root injects the
+    lookup instead.
+
+    ``custom`` is Twilio's Media Streams ``start.customParameters`` — the case id we put
+    on the ``<Stream>`` when we placed the call. It arrives with the stream's first
+    message, which is why an outbound call needs no correlation step and cannot race a
+    database write.
+
+    Returning ``None`` means the case could not be established *unambiguously*. That is
+    not an invitation to pick a default: the caller must fail closed and escalate
+    (AGENTS.md invariant #6).
+    """
+
+    async def __call__(self, call_sid: str, custom: Mapping[str, str]) -> CallBinding | None: ...
+
+
+class OutboundCases(Protocol):
+    """Reserving a case for a call we are about to place, then binding Twilio's sid.
+
+    Two methods rather than one because the order matters: the case row is written
+    *before* the number is dialled, so a call that connects can never exist without the
+    case that authorized it. The sid is patched in afterwards, since Twilio only issues
+    it once the call has been created.
+    """
+
+    async def reserve(self, to_number: str) -> str:
+        """Write the case for a call about to be placed. Returns its case id."""
+
+    async def bind(self, case_id: str, call_sid: str) -> None:
+        """Attach the CallSid Twilio returned to the case already reserved."""

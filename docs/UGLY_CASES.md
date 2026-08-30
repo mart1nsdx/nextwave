@@ -26,6 +26,7 @@ wording the agent uses to get there.
 | 14 | Two carriers accept | Both confirm during `AWARDING` | Exactly one award. Two open bookings is the worst outcome | `test_single_award_under_race` |
 | 15 | Direct request for a person | “Quiero hablar con una persona” | One `DIRECT_REQUEST` handoff; no further negotiation or commitment | `test_direct_handoff_request_is_idempotent` |
 | 16 | Human unavailable | Escalation number busy, rejects or does not answer | `HANDOFF_FAILED`; carrier is never silently left on hold | `test_handoff_failure_closes_without_commitment` |
+| 17 | Stranger calls in | Inbound call from a number tied to no live case, naming no operation | No case → no session. `AMBIGUOUS_CRITICAL_TERM` → escalate. Never answered under a default mandate | `test_unidentifiable_inbound_caller_gets_no_mandate` |
 
 Rows 1–7 come straight from `CHALLENGE.md` (§3 and §5) — they are what the judge is
 expected to try. Rows 8–14 are the failure modes the invariants in `AGENTS.md` exist to

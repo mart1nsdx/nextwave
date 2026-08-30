@@ -10,5 +10,6 @@ reach anything that talks to a model. Enforced by tests/test_layering.py.
 """
 
 from app.policy.handoff import handoff_is_authorized
+from app.policy.mandate import quote_escalation_reason
 
-__all__ = ["handoff_is_authorized"]
+__all__ = ["handoff_is_authorized", "quote_escalation_reason"]
