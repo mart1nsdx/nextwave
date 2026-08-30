@@ -25,6 +25,16 @@ invented timestamps is worse than no log, because the ordering lies silently.
 
 ---
 
+## 2026-08-29T21:19-0500 · domain, policy, repo, market, dashboard, schema · Codex/root
+Added the Volta decision control tower: database-backed read projections and idempotent
+RFQ/award command boundaries, a source-labelled operations/calls/configuration interface,
+and the immutable `Mandate`, FX, trusted-session, and runtime-proposal security kernel.
+The migration creates the required source tables, direct call→operation relation, and
+append-only, versioned assignment evidence without seeding an example operation.
+→ Affects: Físico/Admin/Sistemas must supply authoritative upstream, market, voice, and ledger
+records through Supabase before the dashboard can display operations; mandate-version creation
+requires authenticated ownership.
+
 ## 2026-08-29T17:36-0500 · agent, domain · Nacho/claude
 The system prompt is no longer one hardcoded string. `domain.CompanyProfile` (new — the
 dashboard's pre-registration) and `agent.CallContext` compose it per call:

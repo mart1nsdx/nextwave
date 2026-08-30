@@ -3,7 +3,19 @@
 MAY IMPORT:  domain, config.
 IMPORTED BY: ledger, market, tools.
 
-The interface exists so sim_call and the test suite can run against an in-memory
-implementation with no network. All database access in the codebase goes through here;
-a Supabase client constructed anywhere else is a bug.
+The interface keeps database access in one trusted layer. Tests inject a local double;
+the application uses the Supabase implementation. A Supabase client constructed anywhere
+else is a bug.
 """
+
+from .control_tower import (
+    ControlTowerRepository,
+    ControlTowerStorageUnavailable,
+    SupabaseControlTowerRepository,
+)
+
+__all__ = [
+    "ControlTowerRepository",
+    "ControlTowerStorageUnavailable",
+    "SupabaseControlTowerRepository",
+]
