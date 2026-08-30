@@ -215,9 +215,8 @@ def test_missing_transcript_anchor_is_not_affirmed() -> None:
     explicit ``None``; the domain predicate is what lets an extractor say ``None`` at all.
     """
     proposal = _proposal(transcript_anchor_ms=None)
-    decision = CommitmentCoordinator(_tools_with(proposal)).evaluate_all(
-        _mandate(), {}, now=NOW
-    )[0][1]
+    coordinator = CommitmentCoordinator(_tools_with(proposal))
+    decision = coordinator.evaluate_all(_mandate(), {}, now=NOW)[0][1]
     assert decision.outcome is PolicyOutcome.DENY
     assert decision.reason is ReasonCode.EVIDENCE_MISSING
 

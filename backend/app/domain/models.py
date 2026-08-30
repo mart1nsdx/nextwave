@@ -144,6 +144,20 @@ def build_event_key(call_sid: str, track: TranscriptTrack, sequence_number: int)
     return f"{call_sid}:{track.value}:{sequence_number}"
 
 
+def anchor_is_evidenced(offset_ms: int | None, anchored_offsets: frozenset[int]) -> bool:
+    """Is this anchor a real moment in the call, or a number someone produced?
+
+    Pure and total, so the answer cannot depend on a model, a clock, or the network. The
+    caller supplies ``anchored_offsets`` from the persisted transcript; membership is the
+    whole test. ``None`` is honest ignorance and fails, but so does any offset the ledger
+    never recorded — a plausible ``12345`` is no more evidence than ``0`` is. Absence and
+    fabrication get the same answer because they are the same failure: an affirmation
+    nobody can point at (AGENTS.md invariants #3 and #8).
+    """
+
+    return offset_ms is not None and offset_ms in anchored_offsets
+
+
 class Recap(BaseModel):
     """The negotiation, distilled. Content produced by a model — evidence, never authority.
 
@@ -178,7 +192,16 @@ class AgreementCandidate(BaseModel):
     counterparty: str | None = None
     terms: str
     mandate_reference: str | None = None
-    audio_offset_ms: int = Field(ge=0)
+    audio_offset_ms: int | None = Field(default=None, ge=0)
+    """Where in the call the affirmation was heard, or ``None`` if nothing anchors it.
+
+    Nullable on purpose. This model is handed to OpenAI as a structured-output response
+    schema, so it is the extractor's entire vocabulary: a required integer leaves no way
+    to say "no turn anchors this", and the model fills the hole with a number it did not
+    hear — usually ``0``. That is exactly the inference AGENTS.md invariant #8 forbids,
+    and policy's evidence gate only rejects ``None``, so a fabricated offset would pass
+    it. A number here is a claim, not proof; ``anchor_is_evidenced`` is the check.
+    """
 
 
 class RecapDeliveryStatus(StrEnum):

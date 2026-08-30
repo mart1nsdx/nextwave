@@ -635,7 +635,11 @@ RECOVERY_LINE = recovery_line(DEMO_PROFILE)
 RECAP_SYSTEM = """Summarize this logistics call faithfully. Report only what was said;
 do not infer numbers, dates, currency, or authority. Attribute each statement to its speaker.
 For every apparent agreement, emit an agreement candidate with counterparty, terms, the
-mandate reference if explicitly provided, and the exact source audio offset. Candidates
+mandate reference if explicitly provided, and the audio offset of the turn the agreement
+was heard in. That offset must be copied verbatim from the [N ms] prefix of a transcript
+line. If no single line anchors the agreement, set audio_offset_ms to null. Never round
+it, never average two lines, and never fall back to 0 — null is the correct answer when
+you are unsure, and an offset you did not copy is worse than no offset at all. Candidates
 are evidence for deterministic review, never commitments."""
 
 BRIEF_SYSTEM = """Extract a factual call brief. Anchor actions and mentions to the audio

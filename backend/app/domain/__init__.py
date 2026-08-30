@@ -2,6 +2,7 @@
 
 from .company import BusinessType, CompanyProfile
 from .models import (
+    AgreementCandidate,
     AuditEvent,
     AuditEventKind,
     AuditSubjectType,
@@ -29,6 +30,7 @@ from .models import (
     Speaker,
     TranscriptEvent,
     TranscriptTrack,
+    anchor_is_evidenced,
     build_event_key,
 )
 from .ports import (
@@ -53,6 +55,7 @@ from .security import (
 )
 
 __all__ = [
+    "AgreementCandidate",
     "AuditEvent",
     "AuditEventKind",
     "AuditSubjectType",
@@ -98,5 +101,6 @@ __all__ = [
     "TranscriptSink",
     "TranscriptStore",
     "TranscriptTrack",
+    "anchor_is_evidenced",
     "build_event_key",
 ]
