@@ -10,7 +10,6 @@ from collections.abc import AsyncIterator, Sequence
 
 from agents import TResponseInputItem
 
-from app.agent import RECOVERY_LINE
 from app.voice.llm import Thinker
 from app.voice.session import VoiceSession
 from app.voice.simline import SimLine
@@ -19,6 +18,7 @@ from app.voice.tts.fake import FakeTts
 from app.voice.vad import VadSettings
 
 FIRST_CLAUSE = "Permítame confirmo el dato."
+RECOVERY = "Disculpe, se me cortó. ¿Me lo repite?"
 
 
 class StallingThinker:
@@ -42,6 +42,7 @@ def _session(thinker: Thinker, script: list[ScriptedUtterance]) -> VoiceSession:
         reasoner=thinker,
         vad=VadSettings(barge_in_min_ms=120),
         greeting="Buenas.",
+        recovery=RECOVERY,
     )
 
 
@@ -94,7 +95,7 @@ async def test_a_model_failure_does_not_leave_the_line_silent() -> None:
     await session.run(line, line)
 
     assistant = [str(m["content"]) for m in session.history if m.get("role") == "assistant"]
-    assert RECOVERY_LINE in assistant, "a failed turn must still say something"
+    assert RECOVERY in assistant, "a failed turn must still say something"
 
 
 async def test_final_transcripts_include_both_call_sides_for_post_call_evidence() -> None:
@@ -110,6 +111,7 @@ async def test_final_transcripts_include_both_call_sides_for_post_call_evidence(
         reasoner=OneLinerThinker(),
         vad=VadSettings(barge_in_min_ms=120),
         greeting="Buenas.",
+        recovery=RECOVERY,
         on_final_transcript=sink,
     )
     source = SimLine(script, tail_ms=400, pace_s=0)

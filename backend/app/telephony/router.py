@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from app.config import Settings
 from app.domain.models import CallDirection, HandoffEvent, HandoffReason, HandoffStatus
 from app.domain.ports import TranscriptStore
-from app.voice.session import FinalTranscriptSink, build_session
+from app.voice.session import FinalTranscriptSink, VoiceSession
 
 from .handoff import TwilioHandoff
 from .idempotency import SeenEvents
@@ -27,6 +27,11 @@ from .twiml import (
 log = structlog.get_logger(__name__)
 CallFinished = Callable[[str], Awaitable[None]]
 
+# Builds the conversation for one call. It takes the direction because that is what
+# decides the phase, and it is a callback rather than an import because telephony/ may not
+# reach agent/ — the prompt is composed in the composition root and handed down.
+SessionFactory = Callable[[CallDirection], VoiceSession]
+
 
 def _direction(value: str) -> CallDirection:
     return CallDirection.OUTBOUND if value.startswith("outbound") else CallDirection.INBOUND
@@ -39,6 +44,7 @@ def create_router(
     on_final_transcript: FinalTranscriptSink,
     handoff: TwilioHandoff,
     on_handoff: Callable[[str, HandoffReason, int, str], Awaitable[bool]],
+    make_session: SessionFactory,
 ) -> APIRouter:
     """Create the sole Twilio router. It keeps Twilio out of the evidence layers."""
     router = APIRouter(tags=["telephony"])
@@ -83,10 +89,19 @@ def create_router(
     async def media(websocket: WebSocket) -> None:
         await websocket.accept()
         transport = MediaStreamTransport(websocket)
-        session = build_session(
-            settings, on_final_transcript=on_final_transcript, on_handoff=on_handoff
-        )
-        await transport.pump_with(lambda active: session.run(active, active))
+
+        async def converse(active: MediaStreamTransport) -> None:
+            # Built after `start`, not before: which conversation this is depends on who
+            # called whom, and the CallSid that answers that only arrives with the stream.
+            # Twilio sends `start` immediately, so this costs no audible delay.
+            await active.wait_until_started()
+            if not active.call_id:
+                return  # the line dropped before it began; no session to open
+            case = await store.get_case(active.call_id)
+            direction = case.direction if case is not None else CallDirection.INBOUND
+            await make_session(direction).run(active, active)
+
+        await transport.pump_with(converse)
         active_handoff = await store.get_handoff_for_call(transport.call_id)
         if active_handoff is None or active_handoff.status not in {
             HandoffStatus.CALLER_ON_HOLD,

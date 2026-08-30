@@ -25,6 +25,19 @@ invented timestamps is worse than no log, because the ordering lies silently.
 
 ---
 
+## 2026-08-29T20:01-0500 · agent, voice, telephony, main · Nacho/Claude
+Every live call was running one prompt composed at import (`agent.SYSTEM_PROMPT`), so the
+per-company/per-call composer was unreachable: one company, one lane, phase always RFQ —
+an inbound caller was answered with an outbound pitch — and a frozen `today` that was
+already wrong (it said "viernes, 29 de agosto"; that day is a Saturday).
+The module-level `SYSTEM_PROMPT` / `GREETING` / `RECOVERY_LINE` / `DEMO_CONTEXT` are gone,
+`build_agent(instructions=...)` is now required, `build_session()` takes a
+`CompanyProfile` and a `CallContext`, and `create_router()` takes a `make_session`
+factory. Mocked business data moved to `agent/demo.py` — the seam a repo/ lookup replaces.
+Phase now follows call direction (`main.phase_for`), never the conversation.
+→ Affects: anyone calling `build_agent`, `build_session` or `create_router` — all three
+signatures changed. New `tzdata` dependency (ZoneInfo has no tz database on Windows).
+
 ## 2026-08-29T18:29-05:00 · domain, policy, tools, repo, supabase · Codex
 Added the audited handoff contract: deterministic authorization, one idempotent request
 per call, append-only lifecycle records, and the corresponding Supabase migration.

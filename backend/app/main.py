@@ -5,11 +5,19 @@ import logging
 import structlog
 from fastapi import FastAPI, HTTPException
 
-from app.agent import OpenAIRecapModel, build_brief, build_recap
+from app.agent import (
+    DEMO_PROFILE,
+    CallPhase,
+    OpenAIRecapModel,
+    build_brief,
+    build_recap,
+    demo_context,
+)
 from app.config import Settings, get_settings
 from app.domain.models import (
     CallBrief,
     CallCase,
+    CallDirection,
     HandoffReason,
     Recap,
     RecapContext,
@@ -23,6 +31,7 @@ from app.repo import InMemoryTranscriptStore, SupabaseTranscriptStore
 from app.telephony.handoff import TwilioHandoff
 from app.telephony.router import create_router
 from app.tools import HandoffTool
+from app.voice.session import VoiceSession, build_session
 
 log = structlog.get_logger(__name__)
 
@@ -57,6 +66,20 @@ class RecapService:
         await self._store.save_recap(recap)
         await self._store.save_brief(brief)
         return recap
+
+
+def phase_for(direction: CallDirection) -> CallPhase:
+    """Which conversation this is, decided by who dialed whom.
+
+    Never inferred from what is said. A call we placed is an RFQ; a call that reached us
+    is from someone we have not identified yet, and the inbound rules exist precisely to
+    stop the agent confirming a reference, a rate or a schedule to a stranger. Letting the
+    model pick the phase would let the counterparty pick it.
+
+    AWARD and RENEGOTIATION are reached by market/ selecting a carrier, not by direction,
+    so they are not produced here yet.
+    """
+    return CallPhase.INBOUND if direction is CallDirection.INBOUND else CallPhase.RFQ
 
 
 def _build_store(settings: Settings) -> TranscriptStore:
@@ -119,6 +142,21 @@ def create_app(
     ) -> bool:
         return await handoff_tool.propose_handoff(call_sid, reason, offset_ms, note) is not None
 
+    def make_session(direction: CallDirection) -> VoiceSession:
+        """Compose one call's prompt, here, where the business data enters the system.
+
+        DEMO_PROFILE and demo_context() are mocked business data (agent/demo.py). This is
+        the seam a real profile arrives through: swap these two for a repo/ lookup keyed
+        on the call and nothing below this line changes.
+        """
+        return build_session(
+            settings,
+            DEMO_PROFILE,
+            demo_context(phase_for(direction)),
+            on_final_transcript=persist_final,
+            on_handoff=request_handoff,
+        )
+
     application = FastAPI(title="Volta", version="0.1.0")
     application.state.recap_service = recap_service
     application.include_router(
@@ -129,6 +167,7 @@ def create_app(
             persist_final,
             twilio_handoff,
             request_handoff,
+            make_session,
         )
     )
 

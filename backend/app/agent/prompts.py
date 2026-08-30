@@ -25,22 +25,21 @@ two apart means a Colombian company and a Mexican one share one set of rules ins
 two translations that drift.
 """
 
+from datetime import date, datetime
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 
 from app.domain import CompanyProfile
 
 from .context import CallContext, CallPhase
 
 __all__ = [
-    "DEMO_CONTEXT",
-    "DEMO_PROFILE",
-    "GREETING",
-    "RECOVERY_LINE",
-    "SYSTEM_PROMPT",
     "build_greeting",
     "build_system_prompt",
     "escalation_line",
     "recovery_line",
+    "spoken_date",
+    "today_for",
 ]
 
 # How the agent describes the company in one phrase. A dispatcher hears a wrong
@@ -335,6 +334,68 @@ def _language_name(tag: str) -> str:
     return _LANGUAGE_NAMES.get(tag.lower(), tag)
 
 
+# Written out rather than taken from the C locale: locale names are absent or differently
+# spelled depending on the host, and this string is read aloud on a phone call.
+_WEEKDAYS: dict[str, tuple[str, ...]] = {
+    "en": ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"),
+    "es": ("lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"),
+}
+
+_MONTHS: dict[str, tuple[str, ...]] = {
+    "en": (
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
+    ),
+    "es": (
+        "enero",
+        "febrero",
+        "marzo",
+        "abril",
+        "mayo",
+        "junio",
+        "julio",
+        "agosto",
+        "septiembre",
+        "octubre",
+        "noviembre",
+        "diciembre",
+    ),
+}
+
+
+def spoken_date(day: date, language: str) -> str:
+    """A calendar date the way a person says it, e.g. 'viernes, 29 de agosto de 2026'."""
+    family = _family(language)
+    weekday = _WEEKDAYS[family][day.weekday()]
+    month = _MONTHS[family][day.month - 1]
+    if family == "es":
+        return f"{weekday}, {day.day} de {month} de {day.year}"
+    return f"{weekday}, {day.day} {month} {day.year}"
+
+
+def today_for(profile: CompanyProfile) -> str:
+    """Today where the company is, not where the server is.
+
+    Read at call setup and never written down. The agent resolves "el jueves" against this
+    and reads the result back (invariant #8), so a date that is a day stale does not fail
+    loudly — it produces a confident, wrong date that a dispatcher acts on.
+
+    An unknown IANA name raises here rather than quietly falling back to UTC: a wrong
+    timezone is a wrong date, and the whole point of this value is to be right.
+    """
+    return spoken_date(datetime.now(ZoneInfo(profile.timezone)).date(), profile.primary_language)
+
+
 def _money(amount: Decimal, currency: str) -> str:
     whole = amount == amount.to_integral_value()
     return f"{amount:,.0f} {currency}" if whole else f"{amount:,.2f} {currency}"
@@ -467,46 +528,14 @@ def escalation_line(profile: CompanyProfile) -> str:
     return _ESCALATION[_family(profile.primary_language)]
 
 
-# ------------------------------------------------------------------------------ the demo
+# ------------------------------------------------------------------- post-call analysis
 
-# Stands in for the pre-registration the dashboard will write. It exists so the demo lane
-# keeps running while the platform side is built; delete it once a real profile arrives
-# from repo/, and do not add a second one here.
-DEMO_PROFILE = CompanyProfile(
-    display_name="Textiles Pacífico",
-    business_type="importer",
-    city="Guadalajara",
-    country="México",
-    commodities=["textiles", "telas en rollo"],
-    equipment=["chasis para contenedor de 40 pies"],
-    currency="MXN",
-    timezone="America/Mexico_City",
-    # Overridden away from the en / es-CO default: this lane is Mexican, and the register a
-    # dispatcher in Manzanillo expects is not the one a dispatcher in Bogotá expects.
-    primary_language="es-MX",
-    fallback_language="en",
-    recap_channel="sms",
-)
-
-# The ceiling matches docs/UGLY_CASES.md row 1 on purpose — the judge says "your boss
-# approved 10,500" against a cap of 9,000 — so the hostile fixtures and the demo prompt
-# cannot drift apart.
-DEMO_CONTEXT = CallContext(
-    phase=CallPhase.RFQ,
-    today="viernes, 29 de agosto de 2026",
-    reference="OP-1042",
-    origin="Manzanillo",
-    destination="nuestra bodega en Guadalajara",
-    cargo="un contenedor de 40 pies con textiles",
-    equipment="chasis de 40 pies",
-    pickup_window="entre el martes 2 y el jueves 4 de septiembre de 2026",
-    price_ceiling=Decimal("9000"),
-    target_price=Decimal("8200"),
-)
-
-SYSTEM_PROMPT = build_system_prompt(DEMO_PROFILE, DEMO_CONTEXT)
-GREETING = build_greeting(DEMO_PROFILE, DEMO_CONTEXT)
-RECOVERY_LINE = recovery_line(DEMO_PROFILE)
+# There are deliberately no module-level SYSTEM_PROMPT / GREETING constants here. They
+# existed, and every live call used them: composed once at import against a single demo
+# company, they made the per-call composition above unreachable and pinned every call —
+# inbound included — to one company, one lane, one phase and one frozen date. A prompt
+# built at import time cannot know which call it is for. Compose per call instead; the
+# mock business data lives in demo.py.
 
 # Post-call analysis is evidence only; it never authorizes an action.
 RECAP_SYSTEM = """Summarize this logistics call faithfully. Report only what was said;

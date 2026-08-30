@@ -20,8 +20,15 @@ from enum import Enum, auto
 import structlog
 from agents import TResponseInputItem
 
-from app.agent import GREETING, RECOVERY_LINE, build_agent
+from app.agent import (
+    CallContext,
+    build_agent,
+    build_greeting,
+    build_system_prompt,
+    recovery_line,
+)
 from app.config import Settings
+from app.domain import CompanyProfile
 from app.domain.models import HandoffReason, Speaker, TranscriptTrack
 from app.tools import detected_handoff_reason
 
@@ -53,6 +60,7 @@ class VoiceSession:
         reasoner: Thinker,
         vad: VadSettings,
         greeting: str,
+        recovery: str,
         on_final_transcript: FinalTranscriptSink | None = None,
         on_handoff: HandoffSink | None = None,
     ) -> None:
@@ -61,6 +69,7 @@ class VoiceSession:
         self._reasoner = reasoner
         self._vad_settings = vad
         self._greeting = greeting
+        self._recovery = recovery
         self._on_final_transcript = on_final_transcript
         self._on_handoff = on_handoff
 
@@ -218,8 +227,8 @@ class VoiceSession:
             # nothing and confirms nothing: a technical failure must never come out of
             # the agent's mouth as agreement (invariant #6).
             self._log.exception("reply_failed", spoken_chars=len(said))
-            self._history.append({"role": "assistant", "content": RECOVERY_LINE})
-            await self._speak(RECOVERY_LINE)
+            self._history.append({"role": "assistant", "content": self._recovery})
+            await self._speak(self._recovery)
             await self._flush()
 
     async def _barge_in(self, offset_ms: int) -> None:
@@ -255,16 +264,31 @@ class VoiceSession:
 
 def build_session(
     settings: Settings,
+    profile: CompanyProfile,
+    context: CallContext,
     on_final_transcript: FinalTranscriptSink | None = None,
     on_handoff: HandoffSink | None = None,
 ) -> VoiceSession:
-    """Assemble a conversation from configuration. Called once per call."""
+    """Assemble one conversation. Called once per call, after the phase is known.
+
+    Every spoken constant is composed here from `profile` and `context` rather than read
+    from a module: the greeting, the instructions and the recovery line all have to agree
+    about who the agent works for and what this call is, and the only way to guarantee
+    that is to derive them from the same two objects at the same moment.
+    """
     return VoiceSession(
         stt=make_stt(settings),
         tts=make_tts(settings),
-        reasoner=Reasoner(build_agent(settings.openai_agent_model, settings.openai_api_key)),
+        reasoner=Reasoner(
+            build_agent(
+                settings.openai_agent_model,
+                settings.openai_api_key,
+                instructions=build_system_prompt(profile, context),
+            )
+        ),
         vad=VadSettings.from_settings(settings),
-        greeting=GREETING,
+        greeting=build_greeting(profile, context),
+        recovery=recovery_line(profile),
         on_final_transcript=on_final_transcript,
         on_handoff=on_handoff,
     )

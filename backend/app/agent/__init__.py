@@ -15,26 +15,20 @@ from openai import AsyncOpenAI
 from openai.types.shared import Reasoning
 
 from .context import CallContext, CallPhase
+from .demo import DEMO_PROFILE, demo_context
 from .models import OpenAIRecapModel
 from .prompts import (
-    DEMO_CONTEXT,
-    DEMO_PROFILE,
-    GREETING,
-    RECOVERY_LINE,
-    SYSTEM_PROMPT,
     build_greeting,
     build_system_prompt,
     escalation_line,
     recovery_line,
+    spoken_date,
+    today_for,
 )
 from .recap import build_brief, build_recap
 
 __all__ = [
-    "DEMO_CONTEXT",
     "DEMO_PROFILE",
-    "GREETING",
-    "RECOVERY_LINE",
-    "SYSTEM_PROMPT",
     "CallContext",
     "CallPhase",
     "OpenAIRecapModel",
@@ -43,8 +37,11 @@ __all__ = [
     "build_recap",
     "build_greeting",
     "build_system_prompt",
+    "demo_context",
     "escalation_line",
     "recovery_line",
+    "spoken_date",
+    "today_for",
 ]
 
 
@@ -53,13 +50,15 @@ def build_agent(
     api_key: str,
     tools: list[Any] | None = None,
     *,
-    instructions: str = SYSTEM_PROMPT,
+    instructions: str,
 ) -> Agent:
     """The conversational agent. `tools` is empty today and stays a parameter on purpose.
 
-    `instructions` defaults to the demo lane's prompt so the existing call path keeps
-    working. Real calls pass `build_system_prompt(profile, context)` — composed once, at
-    setup, from the company's pre-registration and the operation this call is about.
+    `instructions` is required and has no default on purpose. It used to fall back to a
+    module-level prompt composed at import against one demo company, which meant every
+    caller that simply forgot to pass one got that company — silently, on a live call.
+    Callers pass `build_system_prompt(profile, context)`, composed at setup from the
+    company's pre-registration and the operation this call is actually about.
 
     The model id and key arrive as arguments rather than being read here because this
     package cannot import config — it sits below it in the layering. voice/ passes them in.

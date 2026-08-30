@@ -19,6 +19,7 @@ dependencies = [
     # parse them at all. Without it every inbound call 500s and the caller hears silence.
     "python-multipart>=0.0.32",
     "openai-agents>=0.22.0",
+    "tzdata>=2026.3",
 ]
 
 [dependency-groups]

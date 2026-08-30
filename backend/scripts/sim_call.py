@@ -15,7 +15,15 @@ from collections.abc import AsyncIterator, Sequence
 
 from agents import TResponseInputItem
 
-from app.agent import GREETING, build_agent
+from app.agent import (
+    DEMO_PROFILE,
+    CallPhase,
+    build_agent,
+    build_greeting,
+    build_system_prompt,
+    demo_context,
+    recovery_line,
+)
 from app.config import get_settings
 from app.voice.llm import Reasoner, Thinker
 from app.voice.session import VoiceSession
@@ -63,6 +71,11 @@ class ScriptedThinker:
             yield clause
 
 
+# The simulator replays a carrier calling us back on a lane we are quoting, so it runs
+# the RFQ prompt — the same composition a real outbound call gets.
+CONTEXT = demo_context(CallPhase.RFQ)
+
+
 def _thinker(live: bool) -> Thinker:
     if not live:
         return ScriptedThinker(
@@ -70,7 +83,13 @@ def _thinker(live: bool) -> Thinker:
             "Eso lo tiene que ver una persona del equipo."
         )
     settings = get_settings()
-    return Reasoner(build_agent(settings.openai_agent_model, settings.openai_api_key))
+    return Reasoner(
+        build_agent(
+            settings.openai_agent_model,
+            settings.openai_api_key,
+            instructions=build_system_prompt(DEMO_PROFILE, CONTEXT),
+        )
+    )
 
 
 async def _run(scenario: str, live: bool) -> int:
@@ -83,7 +102,8 @@ async def _run(scenario: str, live: bool) -> int:
         tts=FakeTts(),
         reasoner=_thinker(live),
         vad=VadSettings.from_settings(get_settings()),
-        greeting=GREETING,
+        greeting=build_greeting(DEMO_PROFILE, CONTEXT),
+        recovery=recovery_line(DEMO_PROFILE),
     )
 
     await session.run(line, line)
