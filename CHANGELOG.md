@@ -25,6 +25,29 @@ invented timestamps is worse than no log, because the ordering lies silently.
 
 ---
 
+## 2026-08-29T22:10-0500 · ledger/voice/repo · Nacho/agent
+Transcript integrity. **Breaking:** `domain.build_event_key` is now
+`(call_sid, track, offset_ms, text)` and content-addressed — `call_sid:<sha256[:32]>` — so a
+redelivered segment collapses because it says the same thing at the same instant, not because
+a counter lined up. `sequence_number` survives as an **ordering hint only**; migration
+`20260830030203_transcript_event_key.sql` drops
+`call_transcript_events_case_id_track_sequence_number_key` and replaces it with a
+`(case_id, audio_offset_ms, sequence_number, created_at)` index. The `sequence_by_call` dict
+in the app factory is gone — the counter now lives in the `VoiceSession` that produced the
+segment, and `FinalTranscriptSink` is a Protocol taking keyword `sequence_number`,
+`audio_offset_ms`, `text` and `interrupted`. Agent turns are anchored at the transport's
+`last_offset_ms` when the turn's first audio reaches the sink (new `AudioSource.last_offset_ms`)
+rather than at the counterparty's `UtteranceEnd`, which sat *before* the agent had spoken.
+Interrupted replies are now written to the ledger from a `finally` with `interrupted=True` —
+barge-in turns used to exist only in memory. `TranscriptEvent` gains `interrupted`,
+`operation_id` and `rfq_id`; the last two are nullable and are written only when a caller
+supplies them, because plumbing `CallBinding` into the live session is W2's work item.
+→ Affects: anyone calling `build_event_key` (signature changed) or passing an
+`on_final_transcript` sink (now keyword-only args). `EvidenceLedger.record_segment` gained
+optional `interrupted`/`operation_id`/`rfq_id`; existing calls are unaffected. The migration
+must be pushed before the new columns are written. Overlaps `app/voice/session.py` and
+`app/main.py` with the concurrent W2 branch — merge, do not overwrite.
+
 ## 2026-08-29T21:53-0500 · repo/domain/supabase · Nacho/agent
 The case spine landed. Two migrations: `call_cases` is renamed to **`calls`** ("case" now
 means the business case) and eight new tables arrive — `operations`, `mandates`, `carriers`,
