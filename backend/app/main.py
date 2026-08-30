@@ -13,12 +13,15 @@ from app.domain.models import (
     HandoffReason,
     Recap,
     RecapContext,
+    RecapDelivery,
+    RecapDeliveryStatus,
     Speaker,
     TranscriptEvent,
     TranscriptTrack,
 )
-from app.domain.ports import RecapModel, TranscriptStore
+from app.domain.ports import RecapModel, RecapSender, TranscriptStore
 from app.ledger import EvidenceLedger
+from app.notify import NullRecapSender, SendGridRecapSender
 from app.repo import InMemoryTranscriptStore, SupabaseTranscriptStore
 from app.telephony.handoff import TwilioHandoff
 from app.telephony.router import create_router
@@ -42,10 +45,19 @@ def configure_logging() -> None:
 class RecapService:
     """Generates reports from stored evidence. It never creates a commitment."""
 
-    def __init__(self, ledger: EvidenceLedger, store: TranscriptStore, model: RecapModel) -> None:
+    def __init__(
+        self,
+        ledger: EvidenceLedger,
+        store: TranscriptStore,
+        model: RecapModel,
+        sender: RecapSender,
+        to_email: str = "",
+    ) -> None:
         self._ledger = ledger
         self._store = store
         self._model = model
+        self._sender = sender
+        self._to_email = to_email
 
     async def run(self, call_sid: str, *, context: RecapContext | None = None) -> Recap | None:
         transcript = await self._ledger.transcript_text(call_sid)
@@ -56,6 +68,14 @@ class RecapService:
         brief = await build_brief(call_sid, transcript, self._model)
         await self._store.save_recap(recap)
         await self._store.save_brief(brief)
+        # why: the recipient is really the carrier contact bound to this call; that lookup
+        # (CallBinding / carrier_contacts) does not exist yet, so recaps go to the operator
+        # address until the case spine lands, at which point it becomes the fallback.
+        delivery = await self._sender.send(recap, self._to_email)
+        await self._store.set_recap_delivery(delivery)
+        if delivery.status is not RecapDeliveryStatus.SENT:
+            # The recap exists; only the invariant-#3 gate is red. Never raise into the call.
+            log.warning("recap_delivery_failed", call_id=call_sid, error=delivery.error)
         return recap
 
 
@@ -66,10 +86,18 @@ def _build_store(settings: Settings) -> TranscriptStore:
     return InMemoryTranscriptStore()
 
 
+def _build_sender(settings: Settings) -> RecapSender:
+    if settings.sendgrid_api_key and settings.recap_from_email:
+        return SendGridRecapSender(settings)
+    log.warning("sendgrid_unconfigured_recap_delivery_fails_closed")
+    return NullRecapSender()
+
+
 def create_app(
     settings: Settings | None = None,
     store: TranscriptStore | None = None,
     recap_model: RecapModel | None = None,
+    recap_sender: RecapSender | None = None,
 ) -> FastAPI:
     configure_logging()
     settings = settings or get_settings()
@@ -79,7 +107,8 @@ def create_app(
         settings.openai_api_key,
         settings.openai_recap_model or settings.openai_agent_model,
     )
-    recap_service = RecapService(ledger, store, recap_model)
+    recap_sender = recap_sender or _build_sender(settings)
+    recap_service = RecapService(ledger, store, recap_model, recap_sender, settings.recap_to_email)
     twilio_handoff = TwilioHandoff(settings, store)
     handoff_tool = HandoffTool(store, twilio_handoff.start)
     sequence_by_call: dict[str, int] = {}
@@ -153,6 +182,13 @@ def create_app(
         if recap is None:
             raise HTTPException(status_code=404, detail="recap not generated")
         return recap
+
+    @application.get("/calls/{call_sid}/recap-delivery")
+    async def get_recap_delivery(call_sid: str) -> RecapDelivery:
+        delivery = await store.get_recap_delivery(call_sid)
+        if delivery is None:
+            raise HTTPException(status_code=404, detail="recap delivery not attempted")
+        return delivery
 
     @application.get("/calls/{call_sid}/brief")
     async def get_brief(call_sid: str) -> CallBrief:
