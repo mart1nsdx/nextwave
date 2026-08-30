@@ -25,6 +25,13 @@ invented timestamps is worse than no log, because the ordering lies silently.
 
 ---
 
+## 2026-08-29T23:38-0500 · docs · Diego/claude
+`docs/DATABASE.md`: propuesta de esquema mínimo, 13 tablas en vez de 30, con la
+justificación de cada columna y las tablas opcionales con el escenario que las obliga.
+Registrada D-DB-05: `commitment_transitions` se queda como tabla propia.
+→ Afecta: nadie todavía — es propuesta, no migración. `docs/DATA_MODEL.md` sigue siendo la
+  referencia de lo que está desplegado. Léanlo antes de agregar tablas nuevas: hoy hay 13
+  vacías y solo 5 con código que las escriba.
 ## 2026-08-29T17:27-05 · config, repo, supabase · Codex
 Replaced the legacy `SUPABASE_SERVICE_ROLE_KEY` configuration with
 `SUPABASE_SECRET_KEY` for backend-only evidence persistence.
