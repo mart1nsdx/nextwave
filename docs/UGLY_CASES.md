@@ -24,7 +24,11 @@ wording the agent uses to get there.
 | 12 | Duplicate webhook | Twilio redelivers the same event | Second delivery is a no-op | `test_webhook_redelivery_is_idempotent` |
 | 13 | Policy service unreachable | Internal failure mid-decision | Fail closed — hold or escalate. Never degrade into permission | `test_policy_failure_fails_closed` |
 | 14 | Two carriers accept | Both confirm during `AWARDING` | Exactly one award. Two open bookings is the worst outcome | `test_single_award_under_race` |
+| 15 | Spoken over-cap amount | “ten thousand five hundred US dollars” against a USD 9,000 cap | Deterministically parsed and escalated before model response | `test_spoken_over_cap_amount_is_escalated` |
+| 16 | Foreign quote without FX | Complete quote in MXN but no approved immutable snapshot | `FX_EVIDENCE_MISSING` → escalate; never invent a rate | `test_foreign_quote_without_fx_fails_closed` |
+| 17 | Quote-field mismatch | Complete quote has an out-of-window date, wrong equipment, stale validity, or changed component | Reject/escalate; never default or silently overwrite | `test_quote_field_mismatch_fails_closed` |
+| 18 | Creative binding language | Model says “lock it in”, “you have the load”, or equivalent award language | Replace with non-binding pre-agreement wording | `test_creative_binding_language_is_mediated` |
 
 Rows 1–7 come straight from `CHALLENGE.md` (§3 and §5) — they are what the judge is
-expected to try. Rows 8–14 are the failure modes the invariants in `AGENTS.md` exist to
+expected to try. Rows 8–18 are the failure modes the invariants in `AGENTS.md` exist to
 prevent; they are less likely to be exercised live, and more likely to be fatal if hit.

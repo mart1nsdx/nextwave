@@ -7,6 +7,12 @@ import pytest
 
 from app.domain import CommitmentMode, CostComponent, Mandate, QuoteProposal, ReasonCode
 from app.tools import CommitmentCoordinator, ProposalTools, ToolStatus
+from app.tools.conversation_guard import (
+    ESCALATION_RESPONSE,
+    FX_MISSING_RESPONSE,
+    NON_BINDING_RESPONSE,
+    build_demo_guard,
+)
 
 NOW = datetime(2026, 8, 29, 18, 0, tzinfo=UTC)
 
@@ -135,3 +141,43 @@ def test_expired_prepare_never_dispatches() -> None:
 def test_model_surface_has_no_commit_or_send_capability() -> None:
     public = {name for name in dir(ProposalTools) if not name.startswith("_")}
     assert public == {"audit_events", "proposals_for", "propose_quote", "read_proposal"}
+
+
+def test_spoken_over_cap_amount_is_escalated() -> None:
+    guard = build_demo_guard(now=lambda: NOW)
+    response = guard.input_directive(
+        "All-in is ten thousand five hundred US dollars, pickup September 3, 2026, "
+        "40-foot container chassis, valid until September 1, 2026.",
+        call_id="CA-SPOKEN",
+        offset_ms=4000,
+    )
+    assert response == ESCALATION_RESPONSE
+
+
+def test_foreign_quote_without_fx_fails_closed() -> None:
+    guard = build_demo_guard(now=lambda: NOW)
+    response = guard.input_directive(
+        "All-in is 150000 MXN, pickup September 3, 2026, 40-foot container chassis, "
+        "valid until September 1, 2026.",
+        call_id="CA-FX",
+        offset_ms=4000,
+    )
+    assert response == FX_MISSING_RESPONSE
+
+
+def test_quote_field_mismatch_fails_closed() -> None:
+    guard = build_demo_guard(now=lambda: NOW)
+    response = guard.input_directive(
+        "All-in is 8,000 USD, pickup September 8, 2026, dry van, valid until August 28, 2026.",
+        call_id="CA-FIELDS",
+        offset_ms=4000,
+    )
+    assert response == ESCALATION_RESPONSE
+
+
+def test_creative_binding_language_is_mediated() -> None:
+    guard = build_demo_guard(now=lambda: NOW)
+    assert guard.filter_model_chunk("Lock it in; you have the load.") == (
+        NON_BINDING_RESPONSE,
+        True,
+    )

@@ -4066,3 +4066,51 @@ demo cap. These are simulated-transport observations, not PSTN evidence.
 
 **Verification:** comprehensive typed conversational extraction, foreign-exchange evidence,
 persistence, actual escalation routing, live PSTN/STT/TTS, and manual phone inspection remain NOT RUN.
+
+## D69 / Person 2 D-16F — Grammar-bound typed quote extraction and output containment
+
+**Status:** APPROVED
+
+**Approved by:** Person 2 / human decision owner
+
+**Approved at:** 2026-08-29T19:31:00-05:00
+
+**Context:** after D68 proved a narrow explicit-USD denial path, the owner authorized implementation
+for spoken-number amounts, foreign currencies, itemized components, pickup date, equipment, carrier
+identity, validity, and creative acceptance/commitment paraphrases.
+
+**Alternatives considered:** A: ask the model to interpret and authorize all fields; B: use an
+unbounded semantic classifier as the enforcement boundary; C: compile explicit English grammars into
+a per-call typed draft, clarify missing/ambiguous facts, bind identity from trusted session metadata,
+and send only complete proposals to deterministic policy; D: silently default missing fields from the
+demo operation. A and B remain probabilistic; D violates the no-inference invariant. C preserves
+natural conversation outside security-sensitive turns while keeping authorization deterministic.
+
+**Decided:** Alternative C. English number words through millions, digit amounts, explicit USD/MXN/
+EUR/CAD/GBP names or codes, named cost components, exact month-day-year pickup/validity, bounded
+relative validity, and allowlisted equipment aliases populate append-only per-call drafts. Bare
+“dollars”, “pesos”, numberless currencies, short forms such as “eight five”, and missing quote fields
+clarify rather than infer. Conflicting component restatements escalate instead of overwrite. Carrier
+IDs and contact IDs come only from trusted session configuration; contradictory spoken company claims
+escalate. Non-USD proposals require an immutable injected FX snapshot no older than policy permits and
+the human-approved mandate margin. Complete eligible results remain non-binding pre-agreements.
+
+Generated output is screened for a conservative family of binding speech acts including accept,
+agree, confirm, commit, book, award, approve, “lock it in”, “you have the load”, “consider it booked”,
+“move forward”, and equivalent configured forms. Matches are replaced by a fixed non-binding response.
+
+**Accepted limitation:** no finite phrase grammar can prove containment of every creative semantic
+paraphrase. This control prevents the tested families but is defense-in-depth; consequential state
+changes remain protected by typed policy evaluation and the separate one-use commitment claim. The
+demo has no live FX fetcher or verified identity adapter, so FX evidence is dependency-injected and
+identity is pre-bound session data. Unsupported languages/forms fail to clarification only when they
+match a security-sensitive grammar; full multilingual extraction remains NOT RUN.
+
+**Observed evidence:** formatting, lint, strict typing, import-layer tests, all 71 local tests, and
+three full fake-transport scenarios passed. Spoken USD 10,500 was denied in 9.3 ms first-audio
+simulated time; two-turn USD 7,000 linehaul plus USD 500 fuel became only a non-binding pre-agreement;
+MXN without approved FX evidence escalated. These are SIMULATED observations, not PSTN evidence.
+
+**Verification:** real STT variants, accents/noise, live immutable FX ingestion, verified-directory
+identity binding, persistence, warm transfer, property/fuzz testing, and live PSTN/manual inspection
+remain NOT RUN.

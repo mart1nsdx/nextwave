@@ -43,6 +43,31 @@ SCENARIOS: dict[str, list[ScriptedUtterance]] = {
     "ambiguous_amount": [
         ScriptedUtterance("I can do eight five.", 600, 2200),
     ],
+    "spoken_over_cap": [
+        ScriptedUtterance(
+            "The all-in rate is ten thousand five hundred US dollars, pickup September 3, "
+            "2026, with a 40-foot container chassis, valid until September 1, 2026.",
+            600,
+            5200,
+        ),
+    ],
+    "quote_components": [
+        ScriptedUtterance("Linehaul is 7,000 US dollars and fuel is 500 US dollars.", 600, 3200),
+        ScriptedUtterance(
+            "That is the final all-in cost. Pickup September 3, 2026, 40-foot container "
+            "chassis, valid until September 1, 2026.",
+            5000,
+            9000,
+        ),
+    ],
+    "foreign_no_fx": [
+        ScriptedUtterance(
+            "The all-in rate is 150000 MXN, pickup September 3, 2026, with a 40-foot "
+            "container chassis, valid until September 1, 2026.",
+            600,
+            5000,
+        ),
+    ],
     # Barge-in: the second line starts while the agent is still answering the first.
     "interrupts": [
         ScriptedUtterance("Hello, what do you need?", 600, 1800),

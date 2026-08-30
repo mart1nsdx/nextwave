@@ -25,6 +25,14 @@ invented timestamps is worse than no log, because the ordering lies silently.
 
 ---
 
+## 2026-08-29T19:31-0500 · tools/voice/policy/security · Person 2/Codex
+Expanded the English policy-mediated demo with stateful deterministic extraction for spoken-number
+money, ISO/named currencies, itemized costs, pickup date, equipment, quote validity, and session-bound
+carrier identity, plus broader binding-language output containment.
+→ Affects: voice/demo/security. Missing or ambiguous facts produce fixed clarification; foreign
+  currency requires an injected immutable FX snapshot and approved mandate margin; no live FX source,
+  persistence, real identity provider, or universal semantic paraphrase classifier was added.
+
 ## 2026-08-29T19:16-0500 · voice/agent/tools/policy/security · Person 2/Codex
 Converted the complete demo profile, scenarios, and spoken behavior to English and connected the
 live conversation loop to deterministic policy mediation through the approved tools boundary.
