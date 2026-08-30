@@ -4182,7 +4182,7 @@ immediate revalidation, and an opaque one-use claim consumed by the allowlisted 
 tests are required. Deployed advanced-schema inspection, real FX ingestion, database writes, SMS,
 official commitment email, and live carrier effects remain NOT RUN.
 
-## D72 — Shared operator bearer token as the interim authentication for non-Twilio routes
+## D74 — Shared operator bearer token as the interim authentication for non-Twilio routes
 
 **Status: PROPOSED — awaiting human approval.** No human has reviewed or approved this
 entry. It is implemented on `fix/harden-public-surface` because the alternative was
