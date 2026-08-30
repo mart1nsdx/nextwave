@@ -102,7 +102,7 @@ backend/tests/  # test_layering.py IS the architecture; fixtures/hostile/ the ad
 backend/scripts/# sim_call — replay a scenario with no PSTN and no cost
 dashboard/      # one screen: Operation / Mandate / Quotes / Commitments / Escalations
 supabase/       # migrations
-docs/           # ARCHITECTURE.md (why the tree is this shape), UGLY_CASES.md, DECISION_LOG.md
+docs/           # ARCHITECTURE.md, UGLY_CASES.md, DECISION_LOG.md, EVALUATION.md (judging)
 ```
 
 **Read `docs/ARCHITECTURE.md` before adding a directory or moving code between packages** — its
@@ -182,18 +182,18 @@ never in `dashboard/`. If a key is committed, rotate it immediately and tell the
 - **Ask before assuming.** If the task is underspecified in a way that changes the design, ask
   one specific question instead of guessing. Coding agents almost never interrupt on their own;
   do it here.
-- **Verify APIs against current docs.** Twilio and the speech vendors all changed recently and
-  most tutorials online are stale. Note that Volta does **not** use OpenAI's Realtime API — the
-  voice path is a cascade (STT → LLM → TTS), see `docs/DECISION_LOG.md` D7 — so Realtime sample
-  code does not apply here at all. Model ids for every layer live in `.env`, never in source.
-  Do not invent function names or parameters; check or say you're unsure.
+- **Verify APIs against current docs.** Twilio and the speech vendors changed recently and most
+  tutorials are stale. Volta does **not** use OpenAI's Realtime API — the voice path is a cascade
+  (STT → LLM → TTS), `docs/DECISION_LOG.md` D7 — so Realtime samples do not apply. Model ids live
+  in `.env`, never in source. Do not invent function names or parameters; check or say so.
+- **The demo must run untouched.** The jury's heaviest lens is whether the system survives what
+  *they* change live, hands off (`docs/EVALUATION.md`). A hand-driven path scores as not working.
 - **Evidence over summaries.** Quote actual test output and log lines. Never report "tests pass"
   without having run them.
 - **Smallest change that works.** No speculative abstractions, no TODOs in code, no
   "future-proofing". 24 hours.
 - **Clean up only your own mess.** Remove imports your change orphaned; leave pre-existing code alone.
-- Optional tooling (gstack skills, custom slash commands) is not installed for everyone.
-  Every workflow here must work with plain `git`, `uv run pytest`, and the commands above.
+- Optional tooling is not installed for everyone; every workflow must work with plain `git` and the commands above.
 
 ## Glossary
 
