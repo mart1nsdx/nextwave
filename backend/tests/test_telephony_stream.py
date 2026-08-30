@@ -151,6 +151,8 @@ def test_voice_webhook_hands_the_call_to_our_socket(monkeypatch: pytest.MonkeyPa
     from app.repo import InMemoryTranscriptStore
 
     monkeypatch.setenv("PUBLIC_BASE_URL", "https://volta-demo.ngrok.app")
+    # This test is about the TwiML, not the signature; test_webhook_auth.py owns that.
+    monkeypatch.setenv("VALIDATE_TWILIO_SIGNATURE", "false")
     get_settings.cache_clear()
     try:
         # Force the in-memory store: a real .env must never make the suite write to Supabase.

@@ -3,14 +3,21 @@
 from collections.abc import Awaitable, Callable
 
 import structlog
-from fastapi import APIRouter, HTTPException, Request, Response, WebSocket
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, WebSocket
 from pydantic import BaseModel, Field
 
 from app.config import Settings
-from app.domain.models import CallDirection, HandoffEvent, HandoffReason, HandoffStatus
+from app.domain.models import (
+    CallDirection,
+    CallStatus,
+    HandoffEvent,
+    HandoffReason,
+    HandoffStatus,
+)
 from app.domain.ports import TranscriptStore
 from app.voice.session import FinalTranscriptSink, build_session
 
+from .auth import internal_token_guard, twilio_signature_guard
 from .handoff import TwilioHandoff
 from .idempotency import SeenEvents
 from .outbound import place_call
@@ -40,8 +47,15 @@ def create_router(
     handoff: TwilioHandoff,
     on_handoff: Callable[[str, HandoffReason, int, str], Awaitable[bool]],
 ) -> APIRouter:
-    """Create the sole Twilio router. It keeps Twilio out of the evidence layers."""
+    """Create the sole Twilio router. It keeps Twilio out of the evidence layers.
+
+    Three sub-routers, because three different callers reach this edge and each proves
+    itself differently: Twilio signs its webhooks, an operator presents a bearer token,
+    and a Media Stream is only as trustworthy as the CallSid it opens with.
+    """
     router = APIRouter(tags=["telephony"])
+    webhooks = APIRouter(dependencies=[Depends(twilio_signature_guard(settings))])
+    operator = APIRouter(dependencies=[Depends(internal_token_guard(settings))])
     seen_status_events = SeenEvents()
 
     async def finalize_call(call_sid: str, *, failed: bool = False) -> None:
@@ -51,7 +65,7 @@ def create_router(
         await store.close_case(call_sid, failed=failed)
         await on_call_finished(call_sid)
 
-    @router.post("/twilio/voice")
+    @webhooks.post("/twilio/voice")
     async def voice(request: Request) -> Response:
         form = await request.form()
         call_sid = str(form.get("CallSid", ""))
@@ -68,7 +82,7 @@ def create_router(
             media_type="application/xml",
         )
 
-    @router.post("/twilio/status")
+    @webhooks.post("/twilio/status")
     async def status(request: Request) -> Response:
         form = await request.form()
         call_sid = str(form.get("CallSid", ""))
@@ -81,12 +95,36 @@ def create_router(
 
     @router.websocket("/twilio/media")
     async def media(websocket: WebSocket) -> None:
+        """Serve audio only for a call this service already opened.
+
+        Twilio does not sign the Media Streams handshake, so the CallSid in the first
+        `start` message is the only credential this socket ever presents. An unknown one
+        gets hung up on before a session exists: a VoiceSession spends money on STT, an
+        LLM and TTS for as long as the stranger keeps talking.
+        """
         await websocket.accept()
         transport = MediaStreamTransport(websocket)
-        session = build_session(
-            settings, on_final_transcript=on_final_transcript, on_handoff=on_handoff
-        )
-        await transport.pump_with(lambda active: session.run(active, active))
+        served = False
+
+        async def serve(active: MediaStreamTransport) -> None:
+            nonlocal served
+            # pump() sets the started event in a finally, so a call that dies before its
+            # `start` message resolves here with an empty CallSid rather than hanging.
+            await active.wait_until_started()
+            case = await store.get_case(active.call_id) if active.call_id else None
+            if case is None or case.status is not CallStatus.ACTIVE:
+                log.warning("media_stream_rejected", call_id=active.call_id)
+                await active.close()  # never hangs here
+                return
+            served = True
+            session = build_session(
+                settings, on_final_transcript=on_final_transcript, on_handoff=on_handoff
+            )
+            await session.run(active, active)
+
+        await transport.pump_with(serve)
+        if not served:
+            return
         active_handoff = await store.get_handoff_for_call(transport.call_id)
         if active_handoff is None or active_handoff.status not in {
             HandoffStatus.CALLER_ON_HOLD,
@@ -95,7 +133,7 @@ def create_router(
         }:
             await finalize_call(transport.call_id)
 
-    @router.post("/twilio/voice/echo")
+    @webhooks.post("/twilio/voice/echo")
     async def voice_echo() -> Response:
         stream_url = websocket_url(settings.public_base_url, "/twilio/media/echo")
         return Response(content=connect_stream(stream_url), media_type="application/xml")
@@ -105,7 +143,7 @@ def create_router(
         await websocket.accept()
         await MediaStreamTransport(websocket).pump_with(echo)
 
-    @router.post("/twilio/handoff/{handoff_id}/wait")
+    @webhooks.post("/twilio/handoff/{handoff_id}/wait")
     async def handoff_waiting(handoff_id: str) -> Response:
         base = settings.public_base_url.rstrip("/")
         return Response(
@@ -113,7 +151,7 @@ def create_router(
             media_type="application/xml",
         )
 
-    @router.post("/twilio/handoff/{handoff_id}/brief")
+    @webhooks.post("/twilio/handoff/{handoff_id}/brief")
     async def handoff_brief(handoff_id: str) -> Response:
         request = await store.get_handoff(handoff_id)
         if request is None:
@@ -129,7 +167,7 @@ def create_router(
             media_type="application/xml",
         )
 
-    @router.post("/twilio/handoff/{handoff_id}/accept")
+    @webhooks.post("/twilio/handoff/{handoff_id}/accept")
     async def handoff_accept(handoff_id: str, request: Request) -> Response:
         handoff_request = await store.get_handoff(handoff_id)
         if handoff_request is None:
@@ -155,7 +193,7 @@ def create_router(
             media_type="application/xml",
         )
 
-    @router.post("/twilio/handoff/{handoff_id}/operator-status")
+    @webhooks.post("/twilio/handoff/{handoff_id}/operator-status")
     async def handoff_operator_status(handoff_id: str, request: Request) -> Response:
         form = await request.form()
         handoff_request = await store.get_handoff(handoff_id)
@@ -167,7 +205,7 @@ def create_router(
             await handoff.fail(handoff_id, f"operator call {operator_status}")
         return Response(status_code=204)
 
-    @router.post("/twilio/handoff/{handoff_id}/conference")
+    @webhooks.post("/twilio/handoff/{handoff_id}/conference")
     async def handoff_conference_status(handoff_id: str, request: Request) -> Response:
         handoff_request = await store.get_handoff(handoff_id)
         form = await request.form()
@@ -183,7 +221,7 @@ def create_router(
             )
         return Response(status_code=204)
 
-    @router.post("/calls")
+    @operator.post("/calls")
     async def start_call(request: CallRequest) -> dict[str, str]:
         try:
             call_sid = await place_call(request.to, settings)
@@ -191,6 +229,8 @@ def create_router(
             raise HTTPException(status_code=503, detail=str(missing)) from missing
         return {"call_id": call_sid}
 
+    router.include_router(webhooks)
+    router.include_router(operator)
     return router
 
 

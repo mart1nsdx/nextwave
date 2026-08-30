@@ -114,6 +114,19 @@ class MediaStreamTransport:
         self._pending_marks.add(name)
         await self._send({"event": "mark", "streamSid": self._stream_sid, "mark": {"name": name}})
 
+    async def close(self, code: int = 1008) -> None:
+        """Hang up on a socket we will not serve. 1008 is "policy violation".
+
+        Tolerates a call that already went away, the same way _send() does: the router
+        rejects unknown streams, and a stranger who disconnects first is not an error.
+        """
+        if self._ws.client_state is not WebSocketState.CONNECTED:
+            return
+        try:
+            await self._ws.close(code=code)
+        except (WebSocketDisconnect, RuntimeError):
+            log.info("close_after_close", call_id=self._call_sid)
+
     # --- the read loop ----------------------------------------------------------
 
     async def pump(self) -> None:
@@ -154,6 +167,10 @@ class MediaStreamTransport:
                     continue
         except WebSocketDisconnect:
             log.info("stream_disconnected", call_id=self._call_sid)
+        except RuntimeError:
+            # We hung up from this side (close()), and Starlette then refuses further
+            # reads. That is the end of the call, not a failure worth propagating.
+            log.info("stream_closed_locally", call_id=self._call_sid)
         finally:
             self._started.set()  # never leave a waiter hanging on a dead call
             await self._inbound.put(_END_OF_STREAM)

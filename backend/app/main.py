@@ -3,7 +3,7 @@
 import logging
 
 import structlog
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 
 from app.agent import OpenAIRecapModel, build_brief, build_recap
 from app.config import Settings, get_settings
@@ -20,6 +20,7 @@ from app.domain.models import (
 from app.domain.ports import RecapModel, TranscriptStore
 from app.ledger import EvidenceLedger
 from app.repo import InMemoryTranscriptStore, SupabaseTranscriptStore
+from app.telephony.auth import internal_token_guard
 from app.telephony.handoff import TwilioHandoff
 from app.telephony.router import create_router
 from app.tools import HandoffTool
@@ -132,36 +133,41 @@ def create_app(
         )
     )
 
+    # D44 makes transcript bodies a restricted resource and POST /calls dials a real
+    # number. Both sit behind the shared operator token until per-actor auth exists.
+    operator_only = [Depends(internal_token_guard(settings))]
+
     @application.get("/health")
     def health() -> dict[str, str]:
+        """Unauthenticated on purpose: liveness only, and it reveals nothing."""
         return {"status": "ok"}
 
-    @application.get("/calls")
+    @application.get("/calls", dependencies=operator_only)
     async def list_calls(limit: int = 50) -> list[CallCase]:
         return await store.list_cases(limit=limit)
 
-    @application.get("/calls/{call_sid}/transcript")
+    @application.get("/calls/{call_sid}/transcript", dependencies=operator_only)
     async def get_transcript(call_sid: str) -> list[TranscriptEvent]:
         events = await store.list_events(call_sid)
         if not events and await store.get_case(call_sid) is None:
             raise HTTPException(status_code=404, detail="call not found")
         return events
 
-    @application.get("/calls/{call_sid}/recap")
+    @application.get("/calls/{call_sid}/recap", dependencies=operator_only)
     async def get_recap(call_sid: str) -> Recap:
         recap = await store.get_recap(call_sid)
         if recap is None:
             raise HTTPException(status_code=404, detail="recap not generated")
         return recap
 
-    @application.get("/calls/{call_sid}/brief")
+    @application.get("/calls/{call_sid}/brief", dependencies=operator_only)
     async def get_brief(call_sid: str) -> CallBrief:
         brief = await store.get_brief(call_sid)
         if brief is None:
             raise HTTPException(status_code=404, detail="brief not generated")
         return brief
 
-    @application.post("/calls/{call_sid}/recap")
+    @application.post("/calls/{call_sid}/recap", dependencies=operator_only)
     async def regenerate_recap(call_sid: str) -> Recap:
         if await store.get_case(call_sid) is None:
             raise HTTPException(status_code=404, detail="call not found")

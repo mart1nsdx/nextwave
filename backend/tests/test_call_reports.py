@@ -49,12 +49,18 @@ class FakeReportModel:
 
 async def test_completed_call_generates_reports_from_persisted_evidence() -> None:
     store = InMemoryTranscriptStore()
+    # Signature validation has its own suite (test_webhook_auth.py); switching it off
+    # here keeps this test about evidence, and the operator token is carried once.
     app = create_app(
-        settings=Settings(public_base_url="https://volta.ngrok.app"),
+        settings=Settings(
+            public_base_url="https://volta.ngrok.app",
+            validate_twilio_signature=False,
+            internal_api_token="operator-token-for-tests",
+        ),
         store=store,
         recap_model=FakeReportModel(),
     )
-    client = TestClient(app)
+    client = TestClient(app, headers={"Authorization": "Bearer operator-token-for-tests"})
 
     response = client.post(
         "/twilio/voice",
