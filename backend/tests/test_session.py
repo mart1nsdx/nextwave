@@ -82,6 +82,9 @@ async def test_a_clean_turn_records_both_sides() -> None:
     assert latency.model_first_chunk_ms is not None
     assert latency.tts_first_audio_ms is not None
     assert latency.end_to_end_first_audio_ms is not None
+    assert latency.spoken_words == 1
+    assert latency.estimated_spoken_ms == 400
+    assert not latency.ordinary_turn_over_budget
     assert not latency.interrupted
 
 

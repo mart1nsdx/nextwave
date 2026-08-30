@@ -109,15 +109,21 @@ async def _run(scenario: str, live: bool) -> int:
 
 def _print_latency(session: VoiceSession) -> None:
     print("\n--- turn latency (monotonic wall time) ---")
-    print("turn  evidence                       stt      model    tts      end-to-end  result")
+    print(
+        "turn  evidence                       stt      model    tts      "
+        "first-audio words speech   result"
+    )
     for sample in session.latency_samples:
         result = "INTERRUPTED" if sample.interrupted else "COMPLETE"
         print(
             f"{sample.turn:<5} {sample.evidence:<30} "
             f"{_ms(sample.stt_endpoint_ms):<8} {_ms(sample.model_first_chunk_ms):<8} "
             f"{_ms(sample.tts_first_audio_ms):<8} "
-            f"{_ms(sample.end_to_end_first_audio_ms):<11} {result}"
+            f"{_ms(sample.end_to_end_first_audio_ms):<11} {sample.spoken_words:<5} "
+            f"{_ms(float(sample.estimated_spoken_ms)):<8} {result}"
         )
+        if sample.ordinary_turn_over_budget:
+            print("      WARNING: ordinary turn exceeds 18-word / ~6-second speech budget")
 
     audible = [
         sample.end_to_end_first_audio_ms

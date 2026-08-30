@@ -3996,3 +3996,32 @@ unsupported `none` effort for the configured `gpt-5-mini` also failed closed. Bo
 **Verification:** automated latency/chunk/prompt tests plus full local verification are required.
 At least 20 live turns and real PSTN/STT/TTS measurement remain NOT RUN; report median, nearest-rank
 p95, maximum, interruption cases, and provider/model configuration before tuning thresholds further.
+
+## D67 / Person 2 D-16D — Precompiled trusted facts for common spoken answers
+
+**Status:** APPROVED
+
+**Approved by:** Person 2 / human decision owner
+
+**Approved at:** 2026-08-29T19:05:00-05:00
+
+**Context:** the first duration-budget run correctly flagged a 23-word, approximately 9.2-second
+answer. The model copied a verbose authoritative pickup range even after receiving an 18-word target.
+
+**Alternatives considered:** A: relax the duration target; B: truncate generated text after a word
+limit; C: ask a second model to shorten it; D: compile exact trusted facts into short canonical spoken
+phrases only when a strict grammar matches. A hides poor interaction; B can delete material terms; C
+adds latency and probabilistic drift. D preserves exact values without giving the model authority.
+
+**Decided:** Alternative D. Normalize only an exact full-match Spanish date-range grammar into a
+short canonical phrase and expose it as a trusted fast fact in the runtime prompt. Unmatched or
+ambiguous values are never rewritten or inferred. Ordinary turns are measured against 18 words and
+an approximate six-second budget; overages are warned, not truncated. Exact safety/commitment recaps
+remain exempt when completeness requires more words.
+
+**Observed evidence:** one live-LLM/fake-transport turn emitted first audio at 953.7 ms, completed at
+1,299.2 ms, and spoke 10 words with an estimated 4.0-second duration: “Del 2 al 4 de septiembre de
+2026. ¿Tiene chasis?” This is SIMULATED_TRANSPORT_LIVE_LLM evidence, not PSTN/TTS proof.
+
+**Verification:** strict full-match/no-match tests, prompt invariants, duration-budget tests, and the
+complete local suite are required. Other languages/date grammars and 20+ real PSTN turns remain NOT RUN.

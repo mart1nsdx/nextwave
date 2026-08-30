@@ -196,6 +196,8 @@ class VoiceSession:
             await self._flush()
             self._history.append({"role": "assistant", "content": said})
             self._log.info("said", text=said)
+            if self._active_latency is not None:
+                self._active_latency.spoken_text = said
             self._finish_latency(interrupted=False)
         except asyncio.CancelledError:
             # Record only what was handed to the synthesizer. The counterparty may have
@@ -203,6 +205,8 @@ class VoiceSession:
             # can never later claim it said something the other side never got.
             if said:
                 self._history.append({"role": "assistant", "content": f"{said} [interrumpido]"})
+            if self._active_latency is not None:
+                self._active_latency.spoken_text = said
             self._log.info("reply_interrupted", spoken_chars=len(said))
             self._finish_latency(interrupted=True)
             raise
@@ -293,6 +297,9 @@ class VoiceSession:
                 "tts_first_audio_ms": sample.tts_first_audio_ms,
                 "end_to_end_first_audio_ms": sample.end_to_end_first_audio_ms,
                 "response_complete_ms": sample.response_complete_ms,
+                "spoken_words": sample.spoken_words,
+                "estimated_spoken_ms": sample.estimated_spoken_ms,
+                "ordinary_turn_over_budget": sample.ordinary_turn_over_budget,
                 "interrupted": sample.interrupted,
             },
         )

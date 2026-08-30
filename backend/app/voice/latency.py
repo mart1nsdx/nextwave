@@ -2,6 +2,8 @@
 
 from dataclasses import dataclass
 
+from .speech_budget import estimated_spoken_ms, ordinary_turn_over_budget, spoken_word_count
+
 
 @dataclass(frozen=True, slots=True)
 class TurnLatency:
@@ -15,6 +17,9 @@ class TurnLatency:
     tts_first_audio_ms: float | None
     end_to_end_first_audio_ms: float | None
     response_complete_ms: float | None
+    spoken_words: int
+    estimated_spoken_ms: int
+    ordinary_turn_over_budget: bool
     interrupted: bool
 
 
@@ -28,6 +33,7 @@ class ActiveTurnLatency:
     model_first_chunk_at: float | None = None
     tts_first_audio_at: float | None = None
     response_complete_at: float | None = None
+    spoken_text: str = ""
 
     def finish(self, now: float, *, interrupted: bool) -> TurnLatency:
         return TurnLatency(
@@ -41,6 +47,9 @@ class ActiveTurnLatency:
             response_complete_ms=(
                 None if interrupted else _elapsed(self.started_at, self.response_complete_at or now)
             ),
+            spoken_words=spoken_word_count(self.spoken_text),
+            estimated_spoken_ms=estimated_spoken_ms(self.spoken_text),
+            ordinary_turn_over_budget=ordinary_turn_over_budget(self.spoken_text),
             interrupted=interrupted,
         )
 

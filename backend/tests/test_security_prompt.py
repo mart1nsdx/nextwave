@@ -34,3 +34,18 @@ def test_runtime_prompt_is_compact_but_keeps_the_authority_boundary() -> None:
     assert "Calls create only non-binding pre-agreements" in normalized
     assert "official commitment email" in normalized
     assert "FIGURES YOU MUST NEVER SAY OUT LOUD" in runtime
+    assert "at most 18 spoken words" in normalized
+    assert "never shorten, omit, or split a safety recap" in normalized
+    assert (
+        'If asked when, say exactly: "Del 2 al 4 de septiembre de 2026. ¿Tiene chasis?"'
+        in normalized
+    )
+    assert "entre el martes 2 y el jueves 4" not in runtime
+
+
+def test_runtime_prompt_never_compacts_an_unmatched_date() -> None:
+    context = DEMO_CONTEXT.model_copy(update={"pickup_window": "el próximo jueves"})
+    runtime = build_runtime_system_prompt(DEMO_PROFILE, context)
+
+    assert "TRUSTED FAST FACT" not in runtime
+    assert "Pickup window: el próximo jueves" in runtime

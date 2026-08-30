@@ -25,6 +25,12 @@ invented timestamps is worse than no log, because the ordering lies silently.
 
 ---
 
+## 2026-08-29T19:05-0500 · agent/voice/security · Person 2/Codex
+Added deterministic speech-duration budgeting and an exact-match precompiled pickup-date fact for
+short common answers; unmatched dates remain untouched and exact safety recaps are never truncated.
+→ Affects: voice/demo/security. One live-LLM fake-transport sample observed 953.7 ms first audio,
+  1,299.2 ms completion, 10 words and ~4.0 seconds speech; real PSTN/TTS evidence remains NOT RUN.
+
 ## 2026-08-29T18:57-0500 · voice/agent/observability/security · Person 2/Codex
 Added evidence-labeled sentence latency telemetry (STT endpoint, model first chunk, TTS first audio,
 end-to-end, completion and barge-in), CLI median/p95/max summaries, shorter streaming chunks, and a
