@@ -25,6 +25,27 @@ invented timestamps is worse than no log, because the ordering lies silently.
 
 ---
 
+## 2026-08-29T21:53-0500 · repo/domain/supabase · Nacho/agent
+The case spine landed. Two migrations: `call_cases` is renamed to **`calls`** ("case" now
+means the business case) and eight new tables arrive — `operations`, `mandates`, `carriers`,
+`carrier_contacts`, `rfqs`, `offers`, `fx_rate_snapshots`, `commitments` — plus `call_reports`
+(merges `call_recaps` + `call_briefs`), `outbound_messages` (generalises
+`call_recap_deliveries` to cover the official commitment email) and `audit_events` (folds in
+`call_handoff_events`). Two partial unique indexes now enforce invariant #5 in the database:
+one live RFQ per operation, one committed row per RFQ. `domain/models.py` gains `Operation`,
+`Carrier`, `CarrierContact`, `Rfq`, `Offer`, `AuditEvent`, `CallBinding` and their enums;
+`CallPhase` **moved** from `agent/context.py` to `domain/models.py` and is re-exported, so
+existing imports keep working. New `repo/operations.py` with in-memory and Supabase
+`OperationRepository` implementations behind a Protocol in `domain/ports.py`. New
+`scripts/seed_demo.py`. The demo mandate is now the single constant
+`tools/conversation_guard.DEMO_MANDATE` — the USD 9,000 cap is stated in exactly one place.
+Dropping the four superseded tables is **not** in this PR; it needs a human decision, so the
+existing Python that reads them still works.
+→ Affects: everyone. New DB writes go through `repo/OperationRepository`, not a new client.
+`SupabaseTranscriptStore` was updated for the table rename; `scripts/award_from_recaps.py`
+still queries `call_cases` by its own `create_client` and is now stale — it is slated for
+deletion and was deliberately left untouched.
+
 ## 2026-08-29T19:50-0500 · scripts/policy/security · Person 2/Codex
 Integrated main's recap-ranking workflow as analysis-only and fail-closed its `--commit`, `--sms`,
 and `--force-incomplete` modes until typed proposals pass deterministic policy and a one-use claim.
