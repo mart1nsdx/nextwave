@@ -4149,3 +4149,35 @@ exports and settings were combined rather than choosing one team's version.
 telephony, persistence, notification, handoff, conversation, and hostile suites are required before
 push. Real PSTN, live Supabase migration application, real SendGrid delivery, and manual phone
 inspection remain NOT RUN.
+
+## D71 / Person 2 D-05B — Recap ranking is analysis-only until policy claim integration
+
+**Status:** APPROVED
+
+**Approved by:** Person 2 / human decision owner
+
+**Approved at:** 2026-08-29T19:50:00-05:00
+
+**Context:** main advanced during D70 with `award_from_recaps.py`. Its default dry-run scopes calls
+to one RFQ and creates an explainable ranking, but `--commit` trusted model-extracted recap fields,
+created manual FX snapshots, wrote offers/VERBAL commitments, accepted a force-incomplete override,
+and `--sms` contacted the selected carrier without the approved typed policy/one-use claim gates.
+
+**Alternatives considered:** A: accept the script because it does not write `COMMITTED`; B: delete
+the partner workflow; C: immediately map an undocumented deployed database schema into the full
+policy coordinator; D: preserve analysis/draft behavior and deterministically block every mutation,
+notification, and incomplete-award flag pending an explicit typed adapter. A violates D26-D31 and
+AGENTS invariants because VERBAL state and carrier SMS are consequential; B discards useful partner
+work; C would guess schema/evidence semantics. D keeps the demo analysis while failing closed.
+
+**Decided:** Alternative D. Model extraction and weighted ranking may produce analysis artifacts and
+non-binding English drafts only. `--commit`, `--sms`, and `--force-incomplete` return explicit
+errors before database or network actions. The internal write helper independently rejects
+`commit=True` so argument-parser bypass cannot restore the side effect. Re-enabling requires typed
+`QuoteProposal` construction from auditable evidence, immutable approved FX snapshots, current
+`Mandate` evaluation, deterministic selection, exact recap evidence, selected commitment mode,
+immediate revalidation, and an opaque one-use claim consumed by the allowlisted adapter.
+
+**Verification:** static quality checks, full suite, direct CLI-gate tests, and internal-helper bypass
+tests are required. Deployed advanced-schema inspection, real FX ingestion, database writes, SMS,
+official commitment email, and live carrier effects remain NOT RUN.
