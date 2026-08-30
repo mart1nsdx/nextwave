@@ -42,7 +42,7 @@ All paths under `backend/app/`.
 | `policy/` | The rules of authority change | **Trusted.** Sole authority |
 | `repo/` | The persistence backend changes | Trusted — obeys, doesn't decide |
 | `ledger/` | What counts as evidence changes | Trusted — append-only |
-| `notify/` | The recap channel changes (SMS → email) | Trusted — obeys |
+| `notify/` | Non-binding recap or official commitment email changes | Trusted — obeys |
 | `agent/` | The agent negotiates better/differently | **Untrusted.** Prompts are content |
 | `market/` | Multi-carrier strategy changes | Trusted — but must ask `policy` |
 | `tools/` | The model gets a new capability | **The boundary.** Widest blast radius |
@@ -90,7 +90,7 @@ How each edge earns its place:
 | --- | --- |
 | #1 The LLM never writes a commitment | `policy/` is a sink; `tools/` is the only place a proposal meets `policy.evaluate()` |
 | #2 The mandate is immutable from inside the call | Mandate lives in `domain/`, is evaluated in `policy/`; neither is reachable from `agent/` or `voice/` |
-| #3 Commitment requires the full chain | The chain spans `policy` → `notify` → `ledger`; no single package can shortcut it |
+| #3 Calls are non-binding; one authorized email attempts commitment | `policy` selects and revalidates; `notify` may dispatch only one claimed canonical payload; `ledger` preserves outcome/uncertainty |
 | #4 Never overwrite silently | `ledger/` is append-only by construction, not by convention |
 | #5 RFQ and AWARD are separate phases | `market/` owns phase state; `tools/` cannot award without going through it |
 | #6 Fail closed | `policy/` is synchronous and total — it always returns a decision, and the default is deny |
@@ -118,9 +118,9 @@ From `docs/CHALLENGE.md` §3. If a folder can't be traced to a row here, it shou
 | Negotiate rate and window inside a mandate | `agent/` proposes, `policy/` authorizes |
 | ≥3 carriers in parallel, quotes played against each other | `market/` |
 | Auditable comparison of why the winner won | `market/` + `ledger/`, surfaced in `dashboard/` |
-| Commitments, not transcripts | `policy/` state machine + `ledger/` |
-| Written recap gates the commitment | `notify/` (send) + `policy/` (RECAP_SENT → COMMITTED) |
-| Every commitment links to an audio timestamp | `ledger/` (offsets) + `telephony/` (stream clock) |
+| Pre-agreements, selection, and commitments remain distinct | `policy/` + `market/` state machines and `ledger/` |
+| Separate recap and official commitment email flows | `notify/`; only a claimed/revalidated operation may dispatch the latter |
+| Every affirmation links to transcript evidence | `ledger/` (turn/time references); no call audio is captured or stored |
 | Call brief: actions taken and things mentioned | `ledger/` |
 | Conversation and system stay consistent | `tools/` is the only path between them, in both directions |
 | Escalate mid-call without hanging up | `telephony/` (warm transfer) + `notify/` (context handoff) |
@@ -171,3 +171,10 @@ evidenced obligation. **Barge-in** — caller interrupts mid-sentence; the agent
 talking and listens. **Escalation** — handing a live call to a human without hanging up.
 **RFQ** — the quote-gathering phase, which creates no obligation. **Award** — the single
 call that closes with the winner.
+
+## 9. Approved Person 2 baseline
+
+The concise, decision-complete security architecture, operational lifecycle, data/crypto rules,
+tool surface, provider constraints, delivery schedule, and external blockers are in
+`docs/PERSON2_ARCHITECTURE_BASELINE.md`. If older scaffold language conflicts with an approved
+decision, the newest non-superseded entry in `docs/DECISION_LOG.md` controls.

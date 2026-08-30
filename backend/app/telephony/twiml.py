@@ -71,9 +71,9 @@ def operator_brief(accept_url: str, message: str) -> str:
 
     response = VoiceResponse()
     gather = Gather(input="dtmf", num_digits=1, timeout=10, action=accept_url, method="POST")
-    gather.append(Say(message, language="es-MX"))
+    gather.append(Say(message, language="en-US"))
     response.append(gather)
-    response.say("No recibimos confirmación. Esta solicitud se cerrará.", language="es-MX")
+    response.say("No confirmation was received. This handoff request will close.", language="en-US")
     response.hangup()
     return str(response)
 
@@ -102,9 +102,9 @@ def unavailable_handoff() -> str:
 
     response = VoiceResponse()
     response.say(
-        "No logramos conectar con una persona en este momento. Un miembro del equipo le devolverá "
-        "la llamada. Gracias.",
-        language="es-MX",
+        "We could not connect a colleague right now. "
+        "A team member will return your call. Thank you.",
+        language="en-US",
     )
     response.hangup()
     return str(response)
@@ -114,6 +114,6 @@ def handoff_wait(wait_url: str) -> str:
     """A short loop while the configured operator is being called."""
 
     response = VoiceResponse()
-    response.say("Un momento mientras le conectamos con una persona.", language="es-MX")
+    response.say("One moment while I connect you with a colleague.", language="en-US")
     response.redirect(wait_url, method="POST")
     return str(response)

@@ -9,6 +9,12 @@ Invariant #1 ("the LLM never writes a commitment") holds because this package ca
 reach anything that talks to a model. Enforced by tests/test_layering.py.
 """
 
-from app.policy.handoff import handoff_is_authorized
+from .engine import evaluate_quote, require_preagreement_evidence, select_best
+from .handoff import handoff_is_authorized
 
-__all__ = ["handoff_is_authorized"]
+__all__ = [
+    "evaluate_quote",
+    "handoff_is_authorized",
+    "require_preagreement_evidence",
+    "select_best",
+]

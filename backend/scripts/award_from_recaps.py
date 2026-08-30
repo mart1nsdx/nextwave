@@ -2,8 +2,6 @@
 
     cd backend
     uv run python -m scripts.award_from_recaps --operation-ref OP-MZO-0001
-    uv run python -m scripts.award_from_recaps --operation-ref OP-MZO-0001 --commit
-    uv run python -m scripts.award_from_recaps --operation-ref OP-MZO-0001 --commit --sms
 
 This is deliberately NOT the live call path. Nothing here decides anything during a
 call. It runs afterwards, once every carrier has been phoned and every call has a
@@ -15,17 +13,14 @@ call. It runs afterwards, once every carrier has been phoned and every call has 
                               ->  score the carriers with an explainable formula
                               ->  pick the best one
                               ->  draft the confirmation email to that carrier's contact
-                              ->  (with --commit) write the offer / participant / commitment rows
-                              ->  (with --commit --sms) text the negotiation specs to the
-                                  awarded carrier ONLY — nobody else is notified
+                              ->  draft evidence for deterministic policy review
 
 A call is tied to the RFQ by `call_cases.metadata->>'rfq_id'`, by an existing `offers`
 row, or by `--assign CALL_SID=COUNTERPARTY_ID` (which --commit then saves to
 `call_cases.metadata` so it stays tied).
 
-The commitment it writes lands at `chain_state = 'VERBAL'`. Reaching `COMMITTED` still
-needs the real chain — a confirmed read-back, a sent recap, an `evidence` row — which a
-DB trigger enforces and this script never fakes (AGENTS.md invariants #1, #3, #8).
+This model-based script is analysis-only. Mutation and notification flags fail closed:
+only the typed policy coordinator may prepare and claim a commitment side effect.
 
 Reads OPENAI_API_KEY / OPENAI_AGENT_MODEL / SUPABASE_URL / SUPABASE_SECRET_KEY from
 backend/.env. Dry-run unless --commit is passed.
@@ -305,34 +300,33 @@ def email_template(op_ref: str, container: str, winner: Carrier) -> dict[str, st
     price = (
         f"{q.price_amount:,.0f} {q.price_currency}"
         if q.price_amount is not None and q.price_currency
-        else "(por confirmar en la llamada)"
+        else "(to be confirmed on the call)"
     )
-    window = _pretty_dt(q.pickup_window_start, "(por confirmar)")
-    who = winner.contact_name or "equipo de despacho"
-    body = f"""Estimado/a {who} ({winner.name}),
+    window = _pretty_dt(q.pickup_window_start, "(to be confirmed)")
+    who = winner.contact_name or "dispatch team"
+    body = f"""Hello {who} ({winner.name}),
 
-Gracias por la cotización para la operación {op_ref}, contenedor {container}
-(arrastre Contecon Manzanillo → Guadalajara).
+Thank you for quoting operation {op_ref}, container {container}
+(Contecon Manzanillo to Guadalajara drayage).
 
-Tras comparar las cotizaciones recibidas para este contenedor, su propuesta es la
-seleccionada:
+After comparing the quotations received for this container, your proposal is the
+selected non-binding candidate:
 
-  • Tarifa:            {price}
-  • Ventana de recogida: {window}
-  • Condiciones:        {"; ".join(q.conditions) or "las conversadas en la llamada"}
+  Rate: {price}
+  Pickup window: {window}
+  Conditions: {"; ".join(q.conditions) or "as discussed on the call"}
 
-Esto NO es aún una adjudicación en firme. Para confirmarla necesitamos que respondan a
-este correo ratificando la tarifa y la ventana exactas. Una vez recibida su confirmación
-por escrito, emitimos la orden para el contenedor {container}.
+This is NOT a binding award. Please reply to confirm the exact rate and pickup window.
+The trusted company process will separately determine whether an official commitment
+may be issued for container {container}.
 
-Quedamos atentos.
+Regards,
 """
     return {
         "to_name": who,
         "to_phone": winner.contact_phone or "",
         "subject": (
-            f"{winner.name} — cotización seleccionada, {op_ref} / {container} "
-            f"(pendiente de confirmación)"
+            f"{winner.name} — selected quotation, {op_ref} / {container} (pending confirmation)"
         ),
         "body": body,
     }
@@ -344,17 +338,17 @@ def sms_body(op_ref: str, container: str, winner: Carrier) -> str:
     price = (
         f"{q.price_amount:,.0f} {q.price_currency}"
         if q.price_amount is not None and q.price_currency
-        else "por confirmar"
+        else "to be confirmed"
     )
-    window = _pretty_dt(q.pickup_window_start, "por confirmar")
+    window = _pretty_dt(q.pickup_window_start, "to be confirmed")
     conds = "; ".join(q.conditions)
     msg = (
-        f"{winner.name}: seleccionados para contenedor {container} ({op_ref}), "
-        f"Contecon Manzanillo -> Guadalajara. Tarifa: {price}. Recogida: {window}."
+        f"{winner.name}: selected candidate for container {container} ({op_ref}), "
+        f"Contecon Manzanillo to Guadalajara. Rate: {price}. Pickup: {window}."
     )
     if conds:
-        msg += f" Condiciones: {conds}."
-    msg += " Responda SI para confirmar. Aun no es adjudicacion en firme."
+        msg += f" Conditions: {conds}."
+    msg += " Reply YES to confirm the recap. This is not a binding award."
     return msg
 
 
@@ -416,6 +410,11 @@ def do_writes(
     fx: dict[str, float],
     commit: bool,
 ) -> str | None:
+    if commit:
+        raise RuntimeError(
+            "unsafe write blocked: model-ranked recap output must pass the deterministic "
+            "policy coordinator and one-use claim"
+        )
     tag = "WRITE" if commit else "dry-run — WOULD WRITE"
     print("\n" + "=" * 78)
     print(tag)
@@ -544,8 +543,13 @@ def main() -> int:
         help="allow awarding a carrier whose recap has no confirmed price",
     )
     args = p.parse_args()
-    if args.sms and not args.commit:
-        return _fail("--sms notifies the carrier of a recorded award; pass --commit too")
+    blocked = mutation_block_reason(
+        commit=args.commit,
+        sms=args.sms,
+        force_incomplete=args.force_incomplete,
+    )
+    if blocked is not None:
+        return _fail(blocked)
 
     settings = get_settings()
     fx = {k.upper(): float(v) for k, v in (a.split("=", 1) for a in args.fx)}
@@ -712,7 +716,7 @@ def main() -> int:
     # SMS — only the awarded carrier, only once its commitment row exists.
     body = sms_body(op["reference"], container, award)
     print("\n" + "=" * 78 + "\nSMS TO AWARDED CARRIER\n" + "=" * 78)
-    print(f"To:   {award.contact_name or '(sin contacto)'}  <{award.contact_phone or '—'}>")
+    print(f"To:   {award.contact_name or '(no contact)'}  <{award.contact_phone or '—'}>")
     print(f"Body: {body}")
     sms_result: dict[str, str] = {"status": "not-sent (no --sms)"}
     if args.sms and commitment_id:
@@ -724,14 +728,24 @@ def main() -> int:
     artifact["sms"] = {"to": award.contact_phone, "body": body, "result": sms_result}
     out.write_text(json.dumps(artifact, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    if not args.commit:
-        print("\n(dry run — pass --commit to write, and --commit --sms to notify)")
+    print("\n(analysis only — writes and notifications require deterministic policy integration)")
     return 0
 
 
 def _fail(msg: str) -> int:
     print(f"error: {msg}", file=sys.stderr)
     return 1
+
+
+def mutation_block_reason(*, commit: bool, sms: bool, force_incomplete: bool) -> str | None:
+    """Fail closed until model-ranked evidence is adapted to the typed policy coordinator."""
+    if force_incomplete:
+        return "--force-incomplete is disabled: incomplete proposals cannot be award candidates"
+    if sms:
+        return "--sms is disabled: notification requires a fresh one-use policy claim"
+    if commit:
+        return "--commit is disabled: route the typed proposal through deterministic policy first"
+    return None
 
 
 if __name__ == "__main__":

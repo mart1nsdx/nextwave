@@ -19,9 +19,9 @@ from openai.types.responses import ResponseTextDeltaEvent
 # natural place to start speaking, and it buys latency at the start of a turn.
 _CLAUSE_ENDINGS = ".?!…:;\n"
 _SOFT_ENDINGS = ",—"
-_MIN_CHUNK = 24
-_SOFT_MIN_CHUNK = 60
-_MAX_CHUNK = 160
+_MIN_CHUNK = 12
+_SOFT_MIN_CHUNK = 40
+_MAX_CHUNK = 96
 
 
 class Thinker(Protocol):

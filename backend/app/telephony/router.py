@@ -122,7 +122,7 @@ def create_router(
         message = (
             f"Volta solicita handoff. Razón: {request.reason.value}. "
             f"Nota: {request.note}. No hay ningún compromiso confirmado. "
-            "Marque uno para aceptar y unirse al carrier."
+            "Press one to accept and join the carrier."
         )
         return Response(
             content=operator_brief(f"{base}/twilio/handoff/{handoff_id}/accept", message),

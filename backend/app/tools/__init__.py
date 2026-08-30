@@ -10,6 +10,21 @@ Every tool here is `propose_*` or a read. No tool mutates state without a policy
 and adding one is an architectural decision — flag it in the PR, don't just ship it.
 """
 
-from app.tools.handoff import HandoffTool, detected_handoff_reason
+from .handoff import HandoffTool, detected_handoff_reason
+from .security import (
+    AuditEvent,
+    CommitmentCoordinator,
+    ProposalTools,
+    ToolResult,
+    ToolStatus,
+)
 
-__all__ = ["HandoffTool", "detected_handoff_reason"]
+__all__ = [
+    "AuditEvent",
+    "CommitmentCoordinator",
+    "HandoffTool",
+    "ProposalTools",
+    "ToolResult",
+    "ToolStatus",
+    "detected_handoff_reason",
+]
