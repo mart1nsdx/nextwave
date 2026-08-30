@@ -25,6 +25,23 @@ invented timestamps is worse than no log, because the ordering lies silently.
 
 ---
 
+## 2026-08-29T20:14-0500 · integration · Diego/claude
+Integrated the three diverged lines of work onto one branch off `main`: `origin/martin`
+(the six policy/evidence/drayage migrations, `seed.sql`, `schema.dbml`) and
+`origin/docs/approve-d01-reference-monitor` (the deterministic policy kernel, the
+conversation guard, the handoff lifecycle and 45 more tests). Neither contained the other,
+and neither was self-consistent alone: the kernel decides against `offers`,
+`policy_decisions`, `commitments` and `evidence`, and those tables only existed in the
+migrations on `martin`. Suite goes 41 passed / 2 skipped → **92 passed / 0 skipped**; the
+two scaffolded skips in `test_policy.py` and `test_ugly_cases.py` are now real tests.
+Conflicts were documentation only and nothing was dropped: CHANGELOG entries from both
+sides interleaved by timestamp, and `docs/DECISION_LOG.md` keeps D1–D8 plus D-DB-01..04
+with Person 2's 67 decisions moved whole into `docs/DECISION_LOG_SECURITY.md`, indexed by
+which ones have code behind them.
+→ Affects: everyone. `main` had neither the policy engine nor the schema, so anything built
+  on `main` today was building against tables and an authorization layer it could not see.
+  Rebase onto this before continuing.
+
 ## 2026-08-29T19:47-0500 · integration/voice/tools/policy/evidence/handoff · Person 2/Codex
 Merged current main into the Person 2 branch and integrated deterministic conversational mediation
 with main's persisted transcript/recap callbacks, audited handoff lifecycle, updated VAD, configuration,
