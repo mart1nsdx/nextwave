@@ -28,7 +28,7 @@ from app.agent import (
     recovery_line,
 )
 from app.config import Settings
-from app.domain import CompanyProfile
+from app.domain import CallBinding, CompanyProfile
 from app.domain.models import HandoffReason, Speaker, TranscriptTrack
 from app.tools import detected_handoff_reason
 
@@ -61,6 +61,7 @@ class VoiceSession:
         vad: VadSettings,
         greeting: str,
         recovery: str,
+        binding: CallBinding | None = None,
         on_final_transcript: FinalTranscriptSink | None = None,
         on_handoff: HandoffSink | None = None,
     ) -> None:
@@ -70,6 +71,7 @@ class VoiceSession:
         self._vad_settings = vad
         self._greeting = greeting
         self._recovery = recovery
+        self._binding = binding
         self._on_final_transcript = on_final_transcript
         self._on_handoff = on_handoff
 
@@ -89,10 +91,28 @@ class VoiceSession:
         """The conversation so far. The raw material for the call brief."""
         return list(self._history)
 
+    @property
+    def binding(self) -> CallBinding | None:
+        """The case and mandate this conversation is running under.
+
+        Set once, at build time, and never from anything heard on the line — invariant #2
+        is only true if there is no path from a spoken sentence back to this object.
+        ``None`` only in the simulator, which negotiates against nobody.
+        """
+        return self._binding
+
     async def run(self, source: AudioSource, sink: AudioSink) -> None:
         # Bound once, so every line this call produces can be filtered out of the three
-        # conversations running in parallel.
+        # conversations running in parallel. The mandate id rides along because "which
+        # authorization was this said under" is the question an audit asks of every line,
+        # and answering it by joining logs after the fact is how it stops being answered.
         self._log = log.bind(call_id=source.call_id)
+        if self._binding is not None:
+            self._log = self._log.bind(
+                operation_ref=self._binding.operation_ref,
+                mandate_id=self._binding.mandate.mandate_id,
+                mandate_version=self._binding.mandate.version,
+            )
         self._call_id = source.call_id
         stt = await self._stt.connect()
         voice = await self._tts.connect()
@@ -266,15 +286,20 @@ def build_session(
     settings: Settings,
     profile: CompanyProfile,
     context: CallContext,
+    binding: CallBinding,
     on_final_transcript: FinalTranscriptSink | None = None,
     on_handoff: HandoffSink | None = None,
 ) -> VoiceSession:
-    """Assemble one conversation. Called once per call, after the phase is known.
+    """Assemble one conversation. Called once per call, after the case is resolved.
 
     Every spoken constant is composed here from `profile` and `context` rather than read
     from a module: the greeting, the instructions and the recovery line all have to agree
     about who the agent works for and what this call is, and the only way to guarantee
     that is to derive them from the same two objects at the same moment.
+
+    `binding` is required and has no default, for the same reason `instructions` has
+    none: a live call with no case behind it is one running under nobody's authority,
+    and a default is how a caller gets there by accident.
     """
     return VoiceSession(
         stt=make_stt(settings),
@@ -289,6 +314,7 @@ def build_session(
         vad=VadSettings.from_settings(settings),
         greeting=build_greeting(profile, context),
         recovery=recovery_line(profile),
+        binding=binding,
         on_final_transcript=on_final_transcript,
         on_handoff=on_handoff,
     )
