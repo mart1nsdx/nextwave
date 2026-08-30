@@ -9,6 +9,7 @@ from app.domain import CommitmentMode, CostComponent, Mandate, QuoteProposal, Re
 from app.domain.models import HandoffReason
 from app.tools import CommitmentCoordinator, ProposalTools, ToolStatus, detected_handoff_reason
 from app.tools.conversation_guard import (
+    AMBIGUOUS_AMOUNT_RESPONSE,
     ESCALATION_RESPONSE,
     FX_MISSING_RESPONSE,
     NON_BINDING_RESPONSE,
@@ -142,6 +143,21 @@ def test_expired_prepare_never_dispatches() -> None:
 def test_model_surface_has_no_commit_or_send_capability() -> None:
     public = {name for name in dir(ProposalTools) if not name.startswith("_")}
     assert public == {"audit_events", "proposals_for", "propose_quote", "read_proposal"}
+
+
+def test_ambiguous_amount_asks() -> None:
+    """Row 6, in both languages: "eight-five" / "ocho cinco" is 8,500 or 85,000.
+
+    STT runs at language=multi, so the ambiguity has to be caught by the deterministic
+    grammar in either language. Asking is the only correct terminal state; a guess that
+    happens to be right is still the bug (AGENTS.md invariant #8).
+    """
+    for utterance in ("The rate is eight-five.", "La tarifa es ocho cinco."):
+        guard = build_demo_guard(now=lambda: NOW)
+        assert (
+            guard.input_directive(utterance, call_id=utterance, offset_ms=2000)
+            == AMBIGUOUS_AMOUNT_RESPONSE
+        )
 
 
 def test_spoken_over_cap_amount_is_escalated() -> None:
