@@ -72,14 +72,18 @@ async def test_completed_call_generates_reports_from_persisted_evidence() -> Non
         speaker=Speaker.CALLER,
     )
 
-    assert client.post(
-        "/twilio/status", data={"CallSid": "CAreport", "CallStatus": "completed"}
-    ).status_code == 204
+    assert (
+        client.post(
+            "/twilio/status", data={"CallSid": "CAreport", "CallStatus": "completed"}
+        ).status_code
+        == 204
+    )
 
     transcript = client.get("/calls/CAreport/transcript").json()
     assert transcript[0]["audio_offset_ms"] == 1200
     assert client.get("/calls/CAreport/recap").json()["quoted_prices"] == ["9,000 MXN"]
-    assert client.get("/calls/CAreport/recap").json()["agreement_candidates"][0][
-        "audio_offset_ms"
-    ] == 1200
+    assert (
+        client.get("/calls/CAreport/recap").json()["agreement_candidates"][0]["audio_offset_ms"]
+        == 1200
+    )
     assert client.get("/calls/CAreport/brief").json()["mentions"][0]["audio_offset_ms"] == 1200

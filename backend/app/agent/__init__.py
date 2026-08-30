@@ -21,8 +21,10 @@ from .prompts import (
     DEMO_PROFILE,
     GREETING,
     RECOVERY_LINE,
+    RUNTIME_SYSTEM_PROMPT,
     SYSTEM_PROMPT,
     build_greeting,
+    build_runtime_system_prompt,
     build_system_prompt,
     escalation_line,
     recovery_line,
@@ -34,6 +36,7 @@ __all__ = [
     "DEMO_PROFILE",
     "GREETING",
     "RECOVERY_LINE",
+    "RUNTIME_SYSTEM_PROMPT",
     "SYSTEM_PROMPT",
     "CallContext",
     "CallPhase",
@@ -42,6 +45,7 @@ __all__ = [
     "build_brief",
     "build_recap",
     "build_greeting",
+    "build_runtime_system_prompt",
     "build_system_prompt",
     "escalation_line",
     "recovery_line",
@@ -53,7 +57,9 @@ def build_agent(
     api_key: str,
     tools: list[Any] | None = None,
     *,
-    instructions: str = SYSTEM_PROMPT,
+    instructions: str = RUNTIME_SYSTEM_PROMPT,
+    reasoning_effort: str = "minimal",
+    max_output_tokens: int = 300,
 ) -> Agent:
     """The conversational agent. `tools` is empty today and stays a parameter on purpose.
 
@@ -90,9 +96,9 @@ def build_agent(
         # dropped line — the dispatcher says "bueno?" and hangs up. Short answers are also
         # simply correct here: nobody monologues at a dispatcher.
         model_settings=ModelSettings(
-            reasoning=Reasoning(effort="minimal"),
+            reasoning=Reasoning(effort=reasoning_effort),  # type: ignore[arg-type]
             verbosity="low",
-            max_tokens=300,
+            max_tokens=max_output_tokens,
             # A hung request must not become open-ended dead air. The turn fails, the
             # agent says RECOVERY_LINE and hands the turn back.
             timeout=12.0,

@@ -36,8 +36,10 @@ def test_direct_request_detector_and_outside_mandate_detector() -> None:
 
 
 def test_warm_handoff_twiml_requires_operator_confirmation() -> None:
-    hold = caller_hold_conference("volta-handoff-abc", "https://example/wait", "https://example/status")
-    brief = operator_brief("https://example/accept", "Marque uno para aceptar.")
+    hold = caller_hold_conference(
+        "volta-handoff-abc", "https://example/wait", "https://example/status"
+    )
+    brief = operator_brief("https://example/accept", "Press one to accept.")
     join = operator_join_conference("volta-handoff-abc", "https://example/status")
 
     assert 'startConferenceOnEnter="false"' in hold

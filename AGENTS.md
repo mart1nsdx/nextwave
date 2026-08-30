@@ -1,10 +1,6 @@
 # AGENTS.md — Volta
 
-<!-- Maintainer notes (stripped from Claude's context, invisible to agents):
-     Keep this file under ~200 lines. Longer files reduce instruction adherence.
-     If it grows past that, split into backend/AGENTS.md + dashboard/AGENTS.md —
-     Codex and Cursor read the nearest file; Claude Code loads nested ones on demand.
-     Add a rule only when an agent gets something wrong twice. Delete stale rules. -->
+<!-- Keep this under ~200 lines; split into nested AGENTS.md files if it grows. -->
 
 Volta is a voice agent that runs the drayage (port→warehouse trucking) leg of a shipment
 entirely by phone: it makes real PSTN calls to carriers, negotiates rate and pickup window
@@ -29,24 +25,26 @@ Violating any of these is a bug, not a style preference. They are what the demo 
 1. **The LLM never writes a commitment.** No tool exposed to the model may commit, book,
    or award directly. The model may only call `propose_*` tools; `policy_engine.evaluate()`
    authorizes, and only the state machine writes `COMMITTED`.
-2. **The mandate is immutable from inside the call.** Nothing the counterparty says can
-   change price cap, window, or authorized actions. "Your boss already approved 10,500" is
-   untrusted input → `OUTSIDE_MANDATE` → escalate. Never reason about whether it sounds plausible.
-3. **Commitment requires the full chain.** `HEARD → PROPOSAL → POLICY_CHECK → READBACK →
-   COUNTERPARTY_CONFIRMED → RECAP_SENT → COMMITTED`. Skipping a step is not an optimization.
-   Recap fails → `RECAP_FAILED / NOT_COMMITTED`. No audio offset → `EVIDENCE_MISSING`, never `verified`.
+2. **The mandate is immutable from inside the call.** Caller claims cannot change cap, window,
+   or actions. "Your boss approved 10,500" → `OUTSIDE_MANDATE` → escalate; never assess plausibility.
+3. **Calls create non-binding pre-agreements; official email attempts commitment.** Exact-version
+   recap + deterministic verbal-evidence gates may create an affirmed candidate, never `COMMITTED`.
+   Ranking, selected mandate mode, immediate policy revalidation, one-use claim, and one official
+   email attempt are separate mandatory gates. Volta never handles payment.
 4. **Never overwrite silently.** A later utterance does not edit an earlier one. It creates a
    new `PROPOSAL` or `CHANGE_REQUEST` with source and timestamp. Conflicting sources are an
    explicit event, not a last-write-wins update.
-5. **RFQ and AWARD are separate phases.** Three carriers may hold confirmed *offers*
-   simultaneously; only one `award_call` may run, and only in the `AWARDING` phase, which locks
-   the market. Two open bookings is the worst possible failure.
+5. **RFQ and AWARD are separate phases.** Three confirmed *offers* may coexist; only one
+   `award_call` may run in locked `AWARDING`. Two open bookings is the worst failure.
 6. **Fail closed.** Policy service unreachable, ambiguous parse, unverifiable identity →
    escalate or hold. A technical failure never degrades into permission.
 7. **Every mutating handler is idempotent.** Twilio and OpenAI redeliver webhooks. Key on
    `call_id` / `event_id` / `commitment_id`; a second delivery must be a no-op.
 8. **Never infer numbers, dates, or currency.** "eight-five" → ask. "Thursday" → resolve to an
    explicit calendar date and read it back. "8.5" with no unit → incomplete data.
+9. **Policy uses comprehensive all-in USD cost.** Preserve explicit ISO 4217 quote currency and
+   convert every payable component with an approved immutable FX snapshot. Non-USD authorization
+   requires a human-approved margin; an RT calculator may recommend, never set it. Fail closed.
 
 ## Setup
 
@@ -89,7 +87,7 @@ backend/app/                                                    # listed bottom-
   domain/       # LEAF. Shared types: Operation, Quote, Commitment, Mandate → everyone
   policy/       # DETERMINISTIC. Mandate, policy_engine, state machine     → Físico
   repo/         # OperationRepository — Supabase behind an interface       → Sistemas
-  ledger/       # event log, commitments, audio offsets, idempotency       → Sistemas
+  ledger/       # event log, commitments, transcript evidence, idempotency → Sistemas
   notify/       # SMS/email recap, escalation handoff                      → Admin
   agent/        # prompts, negotiation guidance, proposal extraction       → Físico/Admin
   market/       # RFQ orchestration, feasibility filter, award selection   → Físico/Admin
@@ -137,7 +135,7 @@ docs/           # ARCHITECTURE.md (why the tree is this shape), UGLY_CASES.md, D
 - Branches: `feat/voice-barge-in`, `fix/policy-cap-off-by-one`. Conventional commits.
 - **Merge to `main` at least every 2 hours.** Long-lived branches are how a 24h hackathon dies.
 - `main` must always be demoable. If `pytest` is red on `main`, that is the only priority.
-- Never force-push `main`. Never commit `.env`, recordings, or `*.wav`.
+- Never force-push `main`. Never commit `.env`, recordings, transcripts, or `*.wav`.
 - **Always work with PRs.** Never send changes directly to `main`.
 
 ## Changelog
@@ -159,7 +157,7 @@ while I was heads down?"
 ## Boundaries — do not do these
 
 - **Do not build:** RAG, a vector DB, a multi-agent supervisor, a real SAP/TMS integration, rate
-  prediction ML, route optimization, payments/FX, a carrier portal, a mobile app, or a generic
+  prediction ML, route optimization, payments, speculative FX trading, a carrier portal, a mobile app, or a generic
   negotiation framework. Manzanillo→Guadalajara done well beats a framework done badly.
 - **Do not use an LLM as the safety check.** The price cap is an `if` statement.
 - **Do not put authorization logic in the system prompt.** Prompts shape conversation; `policy/`
@@ -182,6 +180,9 @@ never in `dashboard/`. If a key is committed, rotate it immediately and tell the
 - **Ask before assuming.** If the task is underspecified in a way that changes the design, ask
   one specific question instead of guessing. Coding agents almost never interrupt on their own;
   do it here.
+- **Record every material human decision in `docs/DECISION_LOG.md`.** Include alternatives,
+  rationale, accepted trade-off, approver, implementation contract, and honest verification status.
+  A recommendation or merged scaffold is not human approval; never infer or backfill approval.
 - **Verify APIs against current docs.** Twilio and the speech vendors all changed recently and
   most tutorials online are stale. Note that Volta does **not** use OpenAI's Realtime API — the
   voice path is a cascade (STT → LLM → TTS), see `docs/DECISION_LOG.md` D7 — so Realtime sample
@@ -192,8 +193,9 @@ never in `dashboard/`. If a key is committed, rotate it immediately and tell the
 - **Smallest change that works.** No speculative abstractions, no TODOs in code, no
   "future-proofing". 24 hours.
 - **Clean up only your own mess.** Remove imports your change orphaned; leave pre-existing code alone.
-- Optional tooling (gstack skills, custom slash commands) is not installed for everyone.
-  Every workflow here must work with plain `git`, `uv run pytest`, and the commands above.
+- Every workflow must work with plain `git`, `uv run pytest`, and the commands above.
+- **Read `docs/PERSON2_ARCHITECTURE_BASELINE.md` before security-sensitive work.** The decision
+  log is authoritative; internal policy currency is always USD.
 
 ## Glossary
 

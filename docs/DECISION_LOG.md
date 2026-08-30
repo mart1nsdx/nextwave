@@ -204,3 +204,26 @@ is a format check in the same class as the E.164 regex on phone numbers — dete
 authority, refuses but never grants.
 
 **Cost:** ~25 lines of plpgsql. Verified against an independent Python implementation.
+
+# Person 2 — security and policy decisions
+
+The full log lives in `docs/DECISION_LOG_SECURITY.md` (67 decisions). It was split out of
+this file so that this one stays readable end to end; nothing was dropped.
+
+These are the ones with code behind them today — the rest record positions taken on ground
+we did not end up building (FX percentile calendars, TOTP, envelope encryption, email quota):
+
+| Decision | Where it lives in code |
+| --- | --- |
+| D-01 — Deterministic reference monitor plus defense in depth | `backend/app/policy/engine.py` |
+| D-02A — Comprehensive all-in USD price-cap semantics | `evaluate_quote`, component sum |
+| D-02B — USD policy currency with controlled FX conversion | `evaluate_quote`, `FxSnapshot` |
+| D-02C — Mandatory mandate-configured FX safety margin | `Mandate.fx_margin_bps` |
+| D-04G — Lowest eligible buffered USD candidate; escalate if none | `policy.select_best` |
+| D-04N — Explicit commitment mode per operation mandate | `domain.CommitmentMode` |
+| D-04P — Explicit verbal confirmation with deterministic evidence gates | `require_preagreement_evidence` |
+| D-04Q — Three proposal-only model tools, no generic connectivity | `backend/app/tools/` |
+| D-09A — One targeted clarification, then deterministic escalation | `tools/conversation_guard.py` |
+| D-10A — Neutral injection handling with repeat-attack escalation | `tools/conversation_guard.py` |
+| D-15A — Local allowlisted observability; vendor tracing disabled | `agent.build_agent` |
+| D-16C — Measured low-latency cascade without moving authorization | `voice/latency.py` |

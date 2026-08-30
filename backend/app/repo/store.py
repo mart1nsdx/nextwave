@@ -409,9 +409,13 @@ class SupabaseTranscriptStore:
 
     async def get_handoff(self, handoff_id: str) -> HandoffRequest | None:
         def _query() -> Any:
-            return self._db.table("call_handoffs").select("*, call_cases(twilio_call_sid)").eq(
-                "id", handoff_id
-            ).limit(1).execute()
+            return (
+                self._db.table("call_handoffs")
+                .select("*, call_cases(twilio_call_sid)")
+                .eq("id", handoff_id)
+                .limit(1)
+                .execute()
+            )
 
         result = await self._run(_query)
         rows = result.data or []
@@ -467,23 +471,32 @@ class SupabaseTranscriptStore:
         row["handoff_id"] = str(event.handoff_id)
 
         def _insert() -> Any:
-            return self._db.table("call_handoff_events").upsert(
-                row, on_conflict="event_key", ignore_duplicates=True
-            ).execute()
+            return (
+                self._db.table("call_handoff_events")
+                .upsert(row, on_conflict="event_key", ignore_duplicates=True)
+                .execute()
+            )
 
         def _update() -> Any:
-            return self._db.table("call_handoffs").update({"status": event.status.value}).eq(
-                "id", str(event.handoff_id)
-            ).execute()
+            return (
+                self._db.table("call_handoffs")
+                .update({"status": event.status.value})
+                .eq("id", str(event.handoff_id))
+                .execute()
+            )
 
         await self._run(_insert)
         await self._run(_update)
 
     async def list_handoff_events(self, handoff_id: str) -> list[HandoffEvent]:
         def _query() -> Any:
-            return self._db.table("call_handoff_events").select("*").eq(
-                "handoff_id", handoff_id
-            ).order("created_at").execute()
+            return (
+                self._db.table("call_handoff_events")
+                .select("*")
+                .eq("handoff_id", handoff_id)
+                .order("created_at")
+                .execute()
+            )
 
         result = await self._run(_query)
         return [HandoffEvent.model_validate(row) for row in (result.data or [])]

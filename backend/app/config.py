@@ -8,6 +8,7 @@ than three hours later, mid-call, when the recap tries to send.
 """
 
 from functools import lru_cache
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -26,6 +27,10 @@ class Settings(BaseSettings):
     # Not hardcoded: model ids move, and most tutorials online are stale. Verify the
     # current fast model id against OpenAI's docs before filling this in.
     openai_agent_model: str = ""
+    openai_reasoning_effort: Literal["minimal", "none", "low", "medium", "high", "xhigh", "max"] = (
+        "minimal"
+    )
+    openai_max_output_tokens: int = 300
     openai_recap_model: str = ""
 
     # --- Speech ---
