@@ -25,6 +25,13 @@ invented timestamps is worse than no log, because the ordering lies silently.
 
 ---
 
+## 2026-08-29T19:47-0500 · integration/voice/tools/policy/evidence/handoff · Person 2/Codex
+Merged current main into the Person 2 branch and integrated deterministic conversational mediation
+with main's persisted transcript/recap callbacks, audited handoff lifecycle, updated VAD, configuration,
+domain exports, and Supabase contracts. Converted main's production handoff speech to English.
+→ Affects: everyone. The same current VoiceSession now records both sides, triggers one handoff, measures
+  latency, and policy-mediates quote/model output. All historical changelog and ugly-case entries remain.
+
 ## 2026-08-29T19:31-0500 · tools/voice/policy/security · Person 2/Codex
 Expanded the English policy-mediated demo with stateful deterministic extraction for spoken-number
 money, ISO/named currencies, itemized costs, pickup date, equipment, quote validity, and session-bound
@@ -53,6 +60,11 @@ compiled runtime prompt under half the canonical prompt size without removing se
 → Affects: voice/security/demo. One live-LLM fake-transport sample observed 1,154.1 ms first audio;
   this is not PSTN evidence. Keep authorization in policy; collect 20+ live turns before claims.
 
+## 2026-08-29T18:29-05:00 · domain, policy, tools, repo, supabase · Codex
+Added the audited handoff contract: deterministic authorization, one idempotent request
+per call, append-only lifecycle records, and the corresponding Supabase migration.
+→ Affects: telephony and dashboard. Apply the new migration before using persisted handoffs.
+
 ## 2026-08-29T18:09-0500 · domain/policy/tools/agent/security · Person 2/Codex
 Implemented the first executable deterministic security kernel: immutable mandates/proposals/FX
 evidence, comprehensive buffered USD evaluation, reason-coded fail-closed decisions, exact recap
@@ -61,6 +73,12 @@ claim. Preserved the partners' cascade/personality while correcting commitment w
 → Affects: everyone. Models receive proposal-only authority; external adapters must consume only a
   freshly revalidated server claim. No live calls/email/payment were run; provider integration,
   persistent repository adapters, dashboard authorization, and live/manual evidence remain pending.
+
+## 2026-08-29T18:09-05 · voice, config · Codex
+Raised the local barge-in gate from 900 RMS for 120 ms to 1800 RMS for 300 ms and added
+a regression test for sustained moderate background noise.
+→ Affects: anyone testing calls. Restart the backend after pulling; tune the two
+  `VAD_BARGE_IN_*` variables only if the actual phone line still needs calibration.
 
 ## 2026-08-29T17:45-0500 · docs/architecture/security · Person 2/Codex
 Published the 30-page `VOLTA_SECURITY_POLICY_ARCHITECTURE.pdf`: one-sentence summary, complete
@@ -80,6 +98,27 @@ DECISION_LOG D8; `policy/` is still the only thing that authorizes anything.
 → Affects: whoever wires `voice/session.py` to a real operation — pass the composed
 prompt and greeting instead of the module-level `SYSTEM_PROMPT` / `GREETING`. Físico:
 `domain/Operation` and `domain/Mandate` should map *into* `CallContext`, not replace it.
+
+## 2026-08-29T17:27-05 · config, repo, supabase · Codex
+Replaced the legacy `SUPABASE_SERVICE_ROLE_KEY` configuration with
+`SUPABASE_SECRET_KEY` for backend-only evidence persistence.
+→ Affects: everyone running the backend. Replace the old `.env` variable with the
+  Supabase `sb_secret_...` key; never expose it to the dashboard.
+
+## 2026-08-29T17:23-05 · supabase, domain, agent · Codex
+Added `call_recaps.agreement_candidates` as a non-null JSONB array for audio-anchored
+agreement evidence. The model writes candidates only; deterministic policy remains the
+sole future authority that can write commitments.
+→ Affects: dashboard and policy. Read the candidates from the persisted recap; never
+  treat them as `COMMITTED` without the policy and written-recap gates.
+
+## 2026-08-29T16:47-05 · voice, telephony, ledger, repo, agent · Codex
+The live bidirectional call now opens an evidence case, persists final caller and agent
+turns with Twilio audio offsets, and produces persisted recap and call-brief reports when
+Twilio closes the call. Report output contains audio-anchored agreement candidates only;
+it does not write commitments or send any message.
+→ Affects: dashboard and policy. Read `/calls/{call_sid}/transcript`, `/recap`, and
+  `/brief`; a later deterministic policy step must validate candidates before commitment.
 
 
 ## 2026-08-29T17:29-0500 · architecture/policy/security · Person 2/Codex
@@ -344,6 +383,13 @@ Human-approved D10/D-02D: an RT calculator may dynamically recommend and explain
 safety margin, but only explicit authenticated human acceptance/override sets the mandate.
 → Affects: everyone. RT is deterministic and advisory; preserve methodology and limitations,
   show USD impact, prohibit preselected assent, and fail closed without an accepted margin.
+
+## 2026-08-29T14:10-0500 · domain, repo, ledger, agent, notify, supabase · Martin/claude
+Added the call-evidence, post-call recap and recap-delivery building blocks, including
+the Supabase migration. The incompatible Twilio transport is adapted separately to the
+existing bidirectional voice path.
+→ Affects: everyone. Evidence and recap types are shared contracts; run the new Supabase
+  migration before enabling persisted call review.
 
 ## 2026-08-29T14:02-0500 · scripts · Nacho/claude
 `uv run python -m scripts.point_number` repoints the Twilio number at whatever tunnel is

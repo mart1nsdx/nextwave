@@ -121,3 +121,26 @@ async def test_interrupted_turn_records_only_audio_that_started() -> None:
     interrupted = [sample for sample in session.latency_samples if sample.interrupted]
     assert interrupted
     assert interrupted[0].end_to_end_first_audio_ms is not None
+
+
+async def test_final_transcripts_include_both_call_sides_for_post_call_evidence() -> None:
+    script = [ScriptedUtterance("nueve mil pesos", 100, 400)]
+    recorded: list[tuple[str, str, int, str]] = []
+
+    async def sink(call_id: str, track: object, speaker: object, offset: int, text: str) -> None:
+        recorded.append((str(track), str(speaker), offset, text))
+
+    session = VoiceSession(
+        stt=FakeStt(script),
+        tts=FakeTts(),
+        reasoner=OneLinerThinker(),
+        vad=VadSettings(barge_in_min_ms=120),
+        greeting="Buenas.",
+        on_final_transcript=sink,
+    )
+    source = SimLine(script, tail_ms=400, pace_s=0)
+    sink_line = SimLine(script, tail_ms=400, pace_s=0)
+    await session.run(source, sink_line)
+
+    assert ("inbound", "caller", 100, "nueve mil pesos") in recorded
+    assert any(track == "outbound" and speaker == "agent" for track, speaker, _, _ in recorded)

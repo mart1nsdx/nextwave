@@ -5,6 +5,8 @@ from app.voice.vad import EnergyVad, VadSettings, frame_rms
 
 LOUD = bytes([0x00, 0x80] * (FRAME_BYTES // 2))  # alternating full-scale +/- 32124
 SILENT = bytes([SILENCE_BYTE]) * FRAME_BYTES
+# +/-876 RMS: audible line/background noise, but below the production speech gate.
+NOISY = bytes([0xD0, 0x50] * (FRAME_BYTES // 2))
 
 
 def test_mulaw_table_matches_g711_reference_points() -> None:
@@ -34,6 +36,13 @@ def test_barge_in_needs_sustained_speech_not_one_loud_frame() -> None:
     # 120 ms at 20 ms per frame = the sixth frame, not the first.
     assert [vad.feed(LOUD) for _ in range(5)] == [False] * 5
     assert vad.feed(LOUD) is True
+
+
+def test_prolonged_background_noise_does_not_trigger_the_production_gate() -> None:
+    settings = VadSettings()
+    vad = EnergyVad(settings)
+    assert frame_rms(NOISY) < settings.barge_in_rms_threshold
+    assert not any(vad.feed(NOISY) for _ in range(100))
 
 
 def test_barge_in_latches_so_the_cut_happens_once() -> None:

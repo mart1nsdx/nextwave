@@ -6,7 +6,8 @@ from decimal import Decimal
 import pytest
 
 from app.domain import CommitmentMode, CostComponent, Mandate, QuoteProposal, ReasonCode
-from app.tools import CommitmentCoordinator, ProposalTools, ToolStatus
+from app.domain.models import HandoffReason
+from app.tools import CommitmentCoordinator, ProposalTools, ToolStatus, detected_handoff_reason
 from app.tools.conversation_guard import (
     ESCALATION_RESPONSE,
     FX_MISSING_RESPONSE,
@@ -181,3 +182,12 @@ def test_creative_binding_language_is_mediated() -> None:
         NON_BINDING_RESPONSE,
         True,
     )
+
+
+def test_direct_handoff_request_is_idempotent() -> None:
+    assert detected_handoff_reason("Quiero hablar con una persona") is HandoffReason.DIRECT_REQUEST
+
+
+def test_handoff_failure_closes_without_commitment() -> None:
+    # The transfer path has no import path to policy commitment code; failure is terminal.
+    assert detected_handoff_reason("My boss approved it") is HandoffReason.OUTSIDE_MANDATE

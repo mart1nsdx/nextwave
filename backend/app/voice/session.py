@@ -16,7 +16,7 @@ import asyncio
 import contextlib
 import time
 from collections import deque
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from enum import Enum, auto
 
 import structlog
@@ -24,6 +24,8 @@ from agents import TResponseInputItem
 
 from app.agent import GREETING, RECOVERY_LINE, build_agent
 from app.config import Settings
+from app.domain.models import HandoffReason, Speaker, TranscriptTrack
+from app.tools import detected_handoff_reason
 from app.tools.conversation_guard import ConversationGuard, build_demo_guard
 
 from .events import FinalTranscript, SpeechStarted, UtteranceEnd
@@ -35,6 +37,9 @@ from .tts import TtsProvider, TtsSession, make_tts
 from .vad import EnergyVad, VadSettings
 
 log = structlog.get_logger(__name__)
+
+FinalTranscriptSink = Callable[[str, TranscriptTrack, Speaker, int, str], Awaitable[None]]
+HandoffSink = Callable[[str, HandoffReason, int, str], Awaitable[bool]]
 
 
 class Turn(Enum):
@@ -55,6 +60,8 @@ class VoiceSession:
         clock: Callable[[], float] = time.perf_counter,
         latency_evidence: str = "LIVE",
         guard: ConversationGuard | None = None,
+        on_final_transcript: FinalTranscriptSink | None = None,
+        on_handoff: HandoffSink | None = None,
     ) -> None:
         self._stt = stt
         self._tts = tts
@@ -64,18 +71,22 @@ class VoiceSession:
         self._clock = clock
         self._latency_evidence = latency_evidence
         self._guard = guard
+        self._on_final_transcript = on_final_transcript
+        self._on_handoff = on_handoff
 
         self._turn = Turn.LISTENING
         self._history: list[TResponseInputItem] = []
         self._heard: list[str] = []
         self._reply: asyncio.Task[None] | None = None
         self._sink: AudioSink | None = None
+        self._source: AudioSource | None = None
         self._voice: TtsSession | None = None
         self._latencies: list[TurnLatency] = []
         self._active_latency: ActiveTurnLatency | None = None
         self._audio_wall: deque[tuple[int, float]] = deque(maxlen=3000)
         self._log = log
-        self._call_id = "unbound"
+        self._call_id = ""
+        self._handoff_requested = False
 
     @property
     def history(self) -> list[TResponseInputItem]:
@@ -89,11 +100,11 @@ class VoiceSession:
     async def run(self, source: AudioSource, sink: AudioSink) -> None:
         # Bound once, so every line this call produces can be filtered out of the three
         # conversations running in parallel.
+        self._log = log.bind(call_id=source.call_id)
         self._call_id = source.call_id
-        self._log = log.bind(call_id=self._call_id)
         stt = await self._stt.connect()
         voice = await self._tts.connect()
-        self._sink, self._voice = sink, voice
+        self._source, self._sink, self._voice = source, sink, voice
         self._vad = EnergyVad(self._vad_settings)
 
         async with asyncio.TaskGroup() as group:
@@ -123,8 +134,42 @@ class VoiceSession:
                 # Settled words. They may still be mid-sentence, so they accumulate;
                 # only UtteranceEnd means the counterparty actually stopped.
                 self._heard.append(event.text)
+                if self._on_final_transcript is not None:
+                    # The transport learns CallSid in Twilio's start event, which may
+                    # arrive just after this session was created.
+                    if self._source is not None:
+                        self._call_id = self._source.call_id
+                    await self._on_final_transcript(
+                        self._call_id,
+                        TranscriptTrack.INBOUND,
+                        Speaker.CALLER,
+                        event.offset_ms,
+                        event.text,
+                    )
+                reason = detected_handoff_reason(event.text)
+                if (
+                    reason is not None
+                    and not self._handoff_requested
+                    and self._on_handoff is not None
+                ):
+                    self._handoff_requested = True
+                    await self._barge_in(event.offset_ms)
+                    started = await self._on_handoff(
+                        self._call_id,
+                        reason,
+                        event.offset_ms,
+                        "deterministic transcript trigger",
+                    )
+                    if not started:
+                        self._handoff_requested = False
+                        self._heard.clear()
+                        await self._speak(
+                            "I could not connect a colleague right now. "
+                            "My team will return your call."
+                        )
+                        await self._flush()
             elif isinstance(event, UtteranceEnd):
-                if self._heard:
+                if self._heard and not self._handoff_requested:
                     self._reply = asyncio.create_task(self._respond(event.offset_ms))
                     # Without this, a crash inside the turn is only ever reported by
                     # asyncio at shutdown as "Task exception was never retrieved", long
@@ -220,6 +265,17 @@ class VoiceSession:
                     break
             await self._flush()
             self._history.append({"role": "assistant", "content": said})
+            if said and self._on_final_transcript is not None:
+                # A bidirectional Twilio stream exposes only the caller's incoming
+                # track. Record the generated reply separately, anchored to the turn
+                # it answers, so the post-call brief can account for agent actions.
+                await self._on_final_transcript(
+                    self._call_id,
+                    TranscriptTrack.OUTBOUND,
+                    Speaker.AGENT,
+                    offset_ms,
+                    said,
+                )
             self._log.info("said", text=said)
             if self._active_latency is not None:
                 self._active_latency.spoken_text = said
@@ -331,7 +387,11 @@ class VoiceSession:
         )
 
 
-def build_session(settings: Settings) -> VoiceSession:
+def build_session(
+    settings: Settings,
+    on_final_transcript: FinalTranscriptSink | None = None,
+    on_handoff: HandoffSink | None = None,
+) -> VoiceSession:
     """Assemble a conversation from configuration. Called once per call."""
     return VoiceSession(
         stt=make_stt(settings),
@@ -348,6 +408,8 @@ def build_session(settings: Settings) -> VoiceSession:
         greeting=GREETING,
         latency_evidence="LIVE_PSTN",
         guard=build_demo_guard(),
+        on_final_transcript=on_final_transcript,
+        on_handoff=on_handoff,
     )
 
 

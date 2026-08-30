@@ -1,13 +1,23 @@
-"""Shared types. The only leaf package: Operation, Quote, Commitment, Mandate, events.
-
-MAY IMPORT:  stdlib, pydantic. Nothing from app.
-IMPORTED BY: everyone.
-
-Types only — no behaviour, no I/O, no decisions. If a function here would need to know
-whether something is *allowed*, it belongs in policy/ instead.
-"""
+"""Shared inert types for every Volta trust layer."""
 
 from .company import BusinessType, CompanyProfile
+from .models import (
+    BriefAction,
+    BriefMention,
+    CallBrief,
+    CallCase,
+    CallDirection,
+    CallStatus,
+    Recap,
+    RecapContext,
+    RecapDelivery,
+    RecapDeliveryStatus,
+    Speaker,
+    TranscriptEvent,
+    TranscriptTrack,
+    build_event_key,
+)
+from .ports import CallCompletedHook, RecapModel, RecapSender, TranscriptSink, TranscriptStore
 from .security import (
     CommitmentMode,
     CostComponent,
@@ -22,7 +32,14 @@ from .security import (
 )
 
 __all__ = [
+    "BriefAction",
+    "BriefMention",
     "BusinessType",
+    "CallBrief",
+    "CallCase",
+    "CallCompletedHook",
+    "CallDirection",
+    "CallStatus",
     "CommitmentMode",
     "CompanyProfile",
     "CostComponent",
@@ -34,4 +51,16 @@ __all__ = [
     "PreparedCommitment",
     "QuoteProposal",
     "ReasonCode",
+    "Recap",
+    "RecapContext",
+    "RecapDelivery",
+    "RecapDeliveryStatus",
+    "RecapModel",
+    "RecapSender",
+    "Speaker",
+    "TranscriptEvent",
+    "TranscriptSink",
+    "TranscriptStore",
+    "TranscriptTrack",
+    "build_event_key",
 ]

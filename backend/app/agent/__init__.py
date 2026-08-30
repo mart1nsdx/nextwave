@@ -15,6 +15,7 @@ from openai import AsyncOpenAI
 from openai.types.shared import Reasoning
 
 from .context import CallContext, CallPhase
+from .models import OpenAIRecapModel
 from .prompts import (
     DEMO_CONTEXT,
     DEMO_PROFILE,
@@ -28,6 +29,7 @@ from .prompts import (
     escalation_line,
     recovery_line,
 )
+from .recap import build_brief, build_recap
 
 __all__ = [
     "DEMO_CONTEXT",
@@ -38,7 +40,10 @@ __all__ = [
     "SYSTEM_PROMPT",
     "CallContext",
     "CallPhase",
+    "OpenAIRecapModel",
     "build_agent",
+    "build_brief",
+    "build_recap",
     "build_greeting",
     "build_runtime_system_prompt",
     "build_system_prompt",

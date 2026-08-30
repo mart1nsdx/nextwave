@@ -4114,3 +4114,38 @@ MXN without approved FX evidence escalated. These are SIMULATED observations, no
 **Verification:** real STT variants, accents/noise, live immutable FX ingestion, verified-directory
 identity binding, persistence, warm transfer, property/fuzz testing, and live PSTN/manual inspection
 remain NOT RUN.
+
+## D70 / Person 2 D-00C — Integrate security into current main's live evidence and handoff path
+
+**Status:** APPROVED
+
+**Approved by:** Person 2 / human decision owner
+
+**Approved at:** 2026-08-29T19:47:00-05:00
+
+**Context:** PR #6 became conflict-blocked after main added persisted bidirectional transcript
+evidence, recap/brief generation, recap delivery, Supabase contracts, deterministic handoff tooling,
+and stricter VAD settings. The owner instructed Person 2 to integrate against the logic currently in
+main rather than preserve obsolete branch implementations.
+
+**Alternatives considered:** A: keep the branch unchanged and leave the PR unmergeable; B: select the
+Person 2 versions wholesale and discard main's new live path; C: select main wholesale and discard
+the deterministic kernel; D: use main's current live composition as the base and layer Person 2
+mediation, observability, and tests into the same session. A blocks delivery; B deletes partner work;
+C removes the security boundary. D preserves both systems at their intended trust boundaries.
+
+**Decided:** Alternative D. Main's evidence callbacks, transcript persistence, recap flow, handoff
+detector/callback, VAD defaults, domain/port exports, configuration, migrations, and tests are
+authoritative. The current VoiceSession additionally retains latency telemetry and routes every
+security-sensitive turn through the conversation guard before model output. Both policy and handoff
+tool exports coexist without widening the import DAG. Production handoff prompts and fallback speech
+are English; multilingual hostile fixtures remain valid input tests.
+
+**Conflict policy:** both changelog histories are retained and timestamp ordered; both ugly-case
+families are retained and uniquely numbered. No existing migration was edited. Conflicting shared
+exports and settings were combined rather than choosing one team's version.
+
+**Verification:** full post-merge formatting, lint, strict typing, architecture, unit, integration,
+telephony, persistence, notification, handoff, conversation, and hostile suites are required before
+push. Real PSTN, live Supabase migration application, real SendGrid delivery, and manual phone
+inspection remain NOT RUN.

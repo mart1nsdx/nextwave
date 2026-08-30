@@ -10,5 +10,11 @@ reach anything that talks to a model. Enforced by tests/test_layering.py.
 """
 
 from .engine import evaluate_quote, require_preagreement_evidence, select_best
+from .handoff import handoff_is_authorized
 
-__all__ = ["evaluate_quote", "require_preagreement_evidence", "select_best"]
+__all__ = [
+    "evaluate_quote",
+    "handoff_is_authorized",
+    "require_preagreement_evidence",
+    "select_best",
+]
