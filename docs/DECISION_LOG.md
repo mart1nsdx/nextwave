@@ -8,6 +8,24 @@ Format: what was decided, what it beat, and what would make us change our mind.
 
 ---
 
+> ## Freeze on new decisions — 2026-08-29
+>
+> This file is 71 decisions and ~4,200 lines. Several of them (D15–D21, FX percentile
+> banking calendars among them) specify behaviour for an `app/market/` package that is
+> currently **nine lines of docstring and no code**. The ratio of specification to
+> implementation is now the project's largest credibility risk: a judge who greps for the
+> code behind an entry finds nothing.
+>
+> **Until `app/market/` contains working code, do not add a new decision here** unless it
+> is forced by a change actually landing in `backend/app/` in the same PR. Nothing existing
+> is deleted or rewritten — the history stands. This is a stop on growth, not a retraction.
+>
+> `Status: PROPOSED — awaiting human approval` means exactly that. A recommendation, a
+> merged scaffold, or an agent's confidence is **not** human approval, and approval is
+> never inferred or backfilled.
+
+---
+
 ## D1 — Deterministic policy engine, not an LLM safety check
 
 **Decided:** authorization is plain Python in `backend/app/policy/`. The price cap is an
@@ -4181,3 +4199,161 @@ immediate revalidation, and an opaque one-use claim consumed by the allowlisted 
 **Verification:** static quality checks, full suite, direct CLI-gate tests, and internal-helper bypass
 tests are required. Deployed advanced-schema inspection, real FX ingestion, database writes, SMS,
 official commitment email, and live carrier effects remain NOT RUN.
+
+## D72 — Content-addressed transcript `event_key`, and dropping the `(case_id, track, sequence_number)` constraint
+
+**Status:** PROPOSED — awaiting human approval
+
+**Approved by:** nobody. Not implemented. No code under `backend/app/` was changed for this entry.
+
+**Context:** transcript sequence numbers are handed out by a dictionary living in the
+app-factory closure of `backend/app/main.py`:
+
+```python
+sequence_by_call: dict[str, int] = {}
+...
+if call_sid not in sequence_by_call:
+    sequence_by_call[call_sid] = len(await ledger.transcript(call_sid))
+sequence_by_call[call_sid] += 1
+```
+
+Four defects follow from that shape, all of them silent:
+
+1. **The check straddles an `await`.** Two early finals for the same call can both pass
+   `call_sid not in sequence_by_call`, both await the same DB read, and both derive the
+   same base. Nothing here is a critical section. Caller finals and agent replies are
+   produced by different tasks (`_listen` and `_respond` in `voice/session.py`), so this
+   is reachable, not theoretical.
+2. **A collision is a silent drop, not an error.** `repo/store.py` upserts with
+   `on_conflict="event_key", ignore_duplicates=True`, and `event_key` is
+   `f"{call_sid}:{track.value}:{sequence_number}"` (`domain/models.py:build_event_key`).
+   A reused number means the second segment is discarded with no log line and no
+   exception. Evidence that is silently incomplete is worse than evidence that is missing
+   loudly.
+3. **The dict never shrinks.** One entry per call, for the life of the process. Small, but
+   unbounded, and the kind of leak that is only ever found during the demo.
+4. **Re-seeding from a DB read is not authoritative.** After a restart the base comes from
+   `len(await ledger.transcript(call_sid))`, which counts *finals only* — so on any call
+   whose events are not all final, the counter restarts inside a range already used.
+
+**Alternatives considered:**
+
+- **A — a lock around the counter.** An `asyncio.Lock` per call fixes the race inside one
+  process. It does not fix the restart re-seed and does nothing across two workers.
+  Cheapest, least durable.
+- **B — a database sequence, or `insert … returning`.** Correct, and makes every write a
+  round-trip that must succeed before the next can be numbered. Adds latency in the live
+  turn path and couples the ledger to one store's capabilities; the in-memory store would
+  have to emulate it.
+- **C — content-addressed `event_key`.** Derive the key from call, track, audio offset and
+  a hash of the text, e.g. `sha256(f"{call_sid}|{track}|{audio_offset_ms}|{text}")[:32]`.
+  Redelivery of the *same* segment yields the same key and stays a no-op (invariant #7);
+  two *different* segments can no longer collide, because they differ in offset or text.
+  `sequence_number` survives as an ordering hint only, and the
+  `unique (case_id, track, sequence_number)` constraint — which today converts a numbering
+  bug into silent data loss — is dropped.
+- **D — keep the constraint and let the insert fail loudly.** Turns a silent drop into a
+  visible error mid-call. Honest, but it makes a numbering bug a call-affecting failure.
+
+**Decided (proposed):** Alternative C. Content-address the key; keep `sequence_number` as a
+non-unique ordering column; drop the `(case_id, track, sequence_number)` unique constraint
+in a **new** migration — never by editing a pushed one.
+
+**Accepted trade-off:** two segments genuinely identical in call, track, offset and text
+collapse into one row. Accepted: at the same audio offset with the same words they are the
+same utterance, and keeping both would misrepresent the call. It also means `event_key` is
+no longer human-readable in a Supabase table view; `order by audio_offset_ms,
+sequence_number` is the replacement for eyeballing the sequence.
+
+**Implementation contract (if approved):**
+
+- `domain/models.py:build_event_key` changes signature to take `audio_offset_ms` and `text`
+  in place of `sequence_number`; every caller updated.
+- `ledger/evidence.py:record_segment` keeps `sequence_number` as an ordering hint and stops
+  claiming idempotency on it in its docstring.
+- The `sequence_by_call` closure in `main.py` becomes a plain per-call counter, or is
+  removed in favour of the audio offset.
+- New migration `supabase/migrations/<ts>_drop_transcript_sequence_unique.sql` dropping the
+  unique constraint. The constraint's generated name must be read off the deployed schema,
+  not guessed.
+- Tests: one asserting two concurrent finals at different offsets both persist; one
+  asserting a genuine redelivery is still a no-op.
+
+**Verification status — honest:** NOT IMPLEMENTED, NOT TESTED. The race was found by
+reading `backend/app/main.py`, not by observing a dropped segment on a live call; no
+reproduction exists. The constraint name has **not** been verified against the deployed
+database. Whether PostgREST surfaces a would-be duplicate at all under
+`ignore_duplicates=True` was read from the client call site, not tested.
+
+## D73 — `AWARD_IMPOSSIBLE` as a terminal RFQ state
+
+**Status:** PROPOSED — awaiting human approval
+
+**Approved by:** nobody. Not implemented. No code under `backend/app/` was changed for this entry.
+
+**Context:** `policy/engine.py:select_best` returns `QuoteProposal | None`, and returns
+`None` whenever no proposal is both `ALLOW` and priced — the ordinary case being *every
+carrier quoted above the cap*. Its only production caller is
+`tools/security.py:CommitmentCoordinator.select`, which hands the `None` straight back out.
+Past that point `None` has no meaning anywhere: there is no `AWARD_IMPOSSIBLE` reason code,
+no terminal state, no notification, no test. `grep -rn "AWARD_IMPOSSIBLE" backend/` returns
+nothing.
+
+This is the RFQ's most likely real outcome — the cap is set by a human who has not called
+anyone yet — and today it is indistinguishable from "nobody has been called yet".
+Invariant #6 (fail closed) says a dead end must be an explicit state, not an absence.
+
+**Alternatives considered:**
+
+- **A — leave `None` as the signal.** Zero code. But absence is not a state: a caller
+  cannot tell "all offers above cap" from "no offers collected" from "the coordinator was
+  never run", and nobody is told anything.
+- **B — auto-escalate the cap and re-run.** Directly violates invariant #2 — the mandate is
+  immutable from inside the call — and would be the worst thing this system could do.
+  Rejected outright, recorded so nobody proposes it again.
+- **C — an explicit terminal state plus a human notification.** `select_best` keeps
+  returning `None`; the market layer that reads it records `AWARD_IMPOSSIBLE` with the
+  per-proposal `PolicyDecision` list as evidence, leaves `AWARDING`, and escalates to the
+  human who owns the mandate. No carrier is contacted.
+- **D — automatically re-open the RFQ with more carriers.** Plausible later, but "spend
+  more time, call more carriers" is a business decision a human should make. It also needs
+  a `market/` package that does not exist.
+
+**Decided (proposed):** Alternative C.
+
+- New `ReasonCode.AWARD_IMPOSSIBLE` and a terminal RFQ state of the same name.
+- Entering it requires that at least one proposal was evaluated. Zero proposals is a
+  *different* terminal state (`NO_OFFERS`); conflating them would hide a broken RFQ run.
+- The state carries the full `list[tuple[QuoteProposal, PolicyDecision]]` from
+  `evaluate_all` as its evidence, so "why" is answerable per carrier without re-running
+  policy.
+- **Who is notified:** the human who owns the mandate, over the same escalation path as
+  `OUTSIDE_MANDATE` — `ESCALATION_PHONE_NUMBER` today. Carriers are told nothing: no offer
+  was ever binding, and a "we could not award" call invites renegotiation outside the
+  mandate.
+- The state is terminal for that RFQ. A new mandate starts a new RFQ; it does not reopen
+  this one.
+
+**Accepted trade-off:** a human is interrupted for an outcome that is often just "the cap
+was too low", and operators will find these annoying. Accepted, because the alternative is
+an RFQ that quietly stops with no owner — which is exactly how a shipment misses its
+window.
+
+**Implementation contract (if approved):** this lands in `app/market/`, which is empty
+today, so **it is blocked behind the freeze note at the top of this file**: it cannot be
+implemented until `market/` exists. When it does —
+
+- `domain/models.py`: add `ReasonCode.AWARD_IMPOSSIBLE` and the RFQ state member.
+- `policy/`: unchanged. `select_best` keeps its `| None` signature; policy stays pure and
+  never notifies.
+- `market/`: interpret `None` from `select_best`, distinguish the zero-proposal case,
+  persist the state with its decision list, call the escalation path.
+- `docs/UGLY_CASES.md`: a new row plus its test, in the same commit, per that file's rule.
+- No `tools/` function may set this state. It is a consequence of policy evaluation, not
+  something the model can request.
+
+**Verification status — honest:** NOT IMPLEMENTED, NOT TESTED, and **not implementable
+today** — `app/market/__init__.py` is a docstring and nothing else. The escalation path
+named above is `ESCALATION_PHONE_NUMBER` as used by `telephony/handoff.py`; whether that is
+the right channel for an *asynchronous* post-RFQ notification, as opposed to a live warm
+transfer, has not been decided by a human and remains open in this proposal.

@@ -25,6 +25,24 @@ invented timestamps is worse than no log, because the ordering lies silently.
 
 ---
 
+## 2026-08-29T21:50-0500 · docs · Nacho/agent
+Made the docs stop overstating what exists. `docs/UGLY_CASES.md`: the twelve rows whose named
+test is absent from `backend/tests/` now carry `— (no test yet)`; coverage is 8 of 20.
+`docs/VERIFICATION.md`: rewritten against the real tree — it mapped `telephony/twilio_router.py`
+and `realtime/transcriber.py` (neither exists), documented `POST /twilio/call-status` and
+`GET /calls/{sid}/recap-delivery` (neither exists), drew `<Start><Stream track="both_tracks">`
+where the code uses `<Connect><Stream>`, and put `SendGridRecapSender` inside `RecapService`,
+which never constructs a sender. It now lists every mounted route, labels every gap `NOT BUILT`
+(no recap email, no signature validation, no `COMMITTED` state machine), and states plainly that
+the agent's outbound track is generated text, not STT evidence. `docs/DECISION_LOG.md`: freeze
+note at the top — no new decisions until `app/market/` contains code — plus D72 (content-addressed
+transcript `event_key`) and D73 (`AWARD_IMPOSSIBLE`), both `PROPOSED — awaiting human approval`.
+No file under `backend/app/` was touched and no test was added or changed.
+→ Affects: anyone who cited `VERIFICATION.md` or an unmarked `UGLY_CASES.md` row as evidence that
+a behaviour is implemented — recheck. Whoever picks up W4 (recap-delivery endpoint) and whoever
+owns `main.py`'s `sequence_by_call` counter: D72 describes a live silent-drop race there and needs
+a human decision before anyone implements it.
+
 ## 2026-08-29T19:50-0500 · scripts/policy/security · Person 2/Codex
 Integrated main's recap-ranking workflow as analysis-only and fail-closed its `--commit`, `--sms`,
 and `--force-incomplete` modes until typed proposals pass deterministic policy and a one-use claim.
