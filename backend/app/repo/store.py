@@ -154,7 +154,11 @@ class InMemoryTranscriptStore:
 
 
 class SupabaseTranscriptStore:
-    """Backed by the two migrations under supabase/migrations/."""
+    """Backed by the migrations under supabase/migrations/.
+
+    The per-call table is ``calls``; it was renamed from ``call_cases`` when "case" was
+    reclaimed for the business case (20260830024256_case_spine.sql).
+    """
 
     def __init__(self, settings: Settings) -> None:
         if not settings.supabase_url or not settings.supabase_secret_key:
@@ -175,7 +179,7 @@ class SupabaseTranscriptStore:
 
         def _query() -> Any:
             return (
-                self._db.table("call_cases")
+                self._db.table("calls")
                 .select("id")
                 .eq("twilio_call_sid", call_sid)
                 .limit(1)
@@ -207,7 +211,7 @@ class SupabaseTranscriptStore:
 
         def _upsert() -> Any:
             return (
-                self._db.table("call_cases")
+                self._db.table("calls")
                 .upsert(row, on_conflict="twilio_call_sid", ignore_duplicates=True)
                 .execute()
             )
@@ -222,7 +226,7 @@ class SupabaseTranscriptStore:
 
         def _update() -> Any:
             return (
-                self._db.table("call_cases")
+                self._db.table("calls")
                 .update(patch)
                 .eq("twilio_call_sid", call_sid)
                 .eq("status", CallStatus.ACTIVE.value)
@@ -234,7 +238,7 @@ class SupabaseTranscriptStore:
     async def record_event(self, event: TranscriptEvent) -> None:
         case_id = await self._case_id(event.call_sid)
         if case_id is None:
-            raise RuntimeError(f"no call_cases row for {event.call_sid!r}; open_case first")
+            raise RuntimeError(f"no calls row for {event.call_sid!r}; open_case first")
         row = {
             "case_id": case_id,
             "event_key": event.event_key,
@@ -288,7 +292,7 @@ class SupabaseTranscriptStore:
     async def get_case(self, call_sid: str) -> CallCase | None:
         def _query() -> Any:
             return (
-                self._db.table("call_cases")
+                self._db.table("calls")
                 .select("*")
                 .eq("twilio_call_sid", call_sid)
                 .limit(1)
@@ -302,7 +306,7 @@ class SupabaseTranscriptStore:
     async def list_cases(self, *, limit: int = 50) -> list[CallCase]:
         def _query() -> Any:
             return (
-                self._db.table("call_cases")
+                self._db.table("calls")
                 .select("*")
                 .order("started_at", desc=True)
                 .limit(limit)
@@ -386,7 +390,7 @@ class SupabaseTranscriptStore:
     async def create_handoff(self, request: HandoffRequest) -> bool:
         case_id = await self._case_id(request.call_sid)
         if case_id is None:
-            raise RuntimeError(f"no call_cases row for {request.call_sid!r}; open_case first")
+            raise RuntimeError(f"no calls row for {request.call_sid!r}; open_case first")
         row = {
             "id": str(request.handoff_id),
             "case_id": case_id,
@@ -411,7 +415,7 @@ class SupabaseTranscriptStore:
         def _query() -> Any:
             return (
                 self._db.table("call_handoffs")
-                .select("*, call_cases(twilio_call_sid)")
+                .select("*, calls(twilio_call_sid)")
                 .eq("id", handoff_id)
                 .limit(1)
                 .execute()
@@ -422,10 +426,10 @@ class SupabaseTranscriptStore:
         if not rows:
             return None
         row = rows[0]
-        call_case = row.get("call_cases") or {}
+        call_row = row.get("calls") or {}
         return HandoffRequest(
             handoff_id=row["id"],
-            call_sid=call_case["twilio_call_sid"],
+            call_sid=call_row["twilio_call_sid"],
             reason=row["reason"],
             evidence_offset_ms=row["evidence_offset_ms"],
             note=row["note"],
