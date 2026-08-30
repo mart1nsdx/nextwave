@@ -25,6 +25,12 @@ invented timestamps is worse than no log, because the ordering lies silently.
 
 ---
 
+## 2026-08-29T21:56-0500 · design, dashboard · Codex/root
+Added `DESIGN.md` as the Volta visual contract: product hierarchy, Nauta positioning,
+tokens, typography, status semantics, evidence treatment, responsive behavior, and the
+required review checklist for interface changes.
+→ Affects: everyone changing the dashboard or any customer-facing Volta surface.
+
 ## 2026-08-29T21:19-0500 · domain, policy, repo, market, dashboard, schema · Codex/root
 Added the Volta decision control tower: database-backed read projections and idempotent
 RFQ/award command boundaries, a source-labelled operations/calls/configuration interface,
