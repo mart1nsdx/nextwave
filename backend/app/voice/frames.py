@@ -68,6 +68,18 @@ class AudioSource(Protocol):
         """
         ...
 
+    @property
+    def last_offset_ms(self) -> int:
+        """Stream position of the most recent frame the transport has seen, in ms.
+
+        The transport's own presentation timestamp, never a wall clock computed here.
+        Read at the instant the agent's first audio for a turn goes out, it is what
+        anchors an agent turn to when the agent actually spoke rather than to when the
+        counterparty stopped — the difference between a commitment pointing at the
+        moment it was agreed and one pointing at a moment before it existed.
+        """
+        ...
+
     def frames(self) -> AsyncIterator[InboundFrame]: ...
 
 

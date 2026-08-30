@@ -82,29 +82,35 @@ def create_app(
     recap_service = RecapService(ledger, store, recap_model)
     twilio_handoff = TwilioHandoff(settings, store)
     handoff_tool = HandoffTool(store, twilio_handoff.start)
-    sequence_by_call: dict[str, int] = {}
 
     async def persist_final(
         call_sid: str,
         track: TranscriptTrack,
         speaker: Speaker,
-        offset_ms: int,
+        *,
+        sequence_number: int,
+        audio_offset_ms: int,
         text: str,
+        interrupted: bool = False,
     ) -> None:
+        # The sequence number arrives from the VoiceSession that produced the segment.
+        # It used to be minted here out of a dict keyed by CallSid, which never shrank,
+        # re-seeded itself from a database read, and did so across an await — so the
+        # first two events of a call could both seed it and one could overwrite the
+        # other's count. Identity no longer depends on it either way: the event key is
+        # content-addressed (domain.build_event_key).
         if not call_sid:
             log.error("transcript_without_call_id")
             return
-        if call_sid not in sequence_by_call:
-            sequence_by_call[call_sid] = len(await ledger.transcript(call_sid))
-        sequence_by_call[call_sid] += 1
         await ledger.record_segment(
             call_sid,
             track=track,
-            sequence_number=sequence_by_call[call_sid],
-            audio_offset_ms=offset_ms,
+            sequence_number=sequence_number,
+            audio_offset_ms=audio_offset_ms,
             text=text,
             is_final=True,
             speaker=speaker,
+            interrupted=interrupted,
         )
 
     async def complete_call(call_sid: str) -> None:

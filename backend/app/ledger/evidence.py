@@ -8,6 +8,8 @@ is the check a policy step will call before it lets anything reach COMMITTED.
 
 from __future__ import annotations
 
+from uuid import UUID
+
 from app.domain.models import Speaker, TranscriptEvent, TranscriptTrack, build_event_key
 from app.domain.ports import TranscriptStore
 
@@ -28,18 +30,34 @@ class EvidenceLedger:
         text: str,
         is_final: bool,
         speaker: Speaker = Speaker.UNKNOWN,
+        interrupted: bool = False,
+        operation_id: UUID | None = None,
+        rfq_id: UUID | None = None,
     ) -> TranscriptEvent:
-        """Append one transcript segment. Idempotent on (call_sid, track, sequence_number)."""
+        """Append one transcript segment. Idempotent on what was said and when.
+
+        ``sequence_number`` orders segments that share an offset; it does not identify
+        them. Identity is the content-addressed key, so a redelivered segment collapses
+        onto the row it already wrote even if the counter behind it has moved on
+        (AGENTS.md invariant #7).
+
+        ``operation_id``/``rfq_id`` come from the call's CallBinding. Plumbing the binding
+        into the live session is work item W2 and is not on this branch, so they are
+        written when the caller has them and left null otherwise — never guessed here.
+        """
 
         event = TranscriptEvent(
             call_sid=call_sid,
-            event_key=build_event_key(call_sid, track, sequence_number),
+            event_key=build_event_key(call_sid, track, audio_offset_ms, text),
             track=track,
             speaker=speaker,
             sequence_number=sequence_number,
             audio_offset_ms=audio_offset_ms,
             text=text,
             is_final=is_final,
+            interrupted=interrupted,
+            operation_id=operation_id,
+            rfq_id=rfq_id,
         )
         await self._store.record_event(event)
         return event

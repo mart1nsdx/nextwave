@@ -30,12 +30,14 @@ class SimLine:
         self._until_ms = max((u.end_ms for u in script), default=0) + tail_ms
         self._pace_s = pace_s
         self.call_id = "sim"
+        self.last_offset_ms = 0
         self.played: list[bytes] = []
         self.clears = 0
 
     async def frames(self) -> AsyncIterator[InboundFrame]:
         for offset in range(FRAME_MS, self._until_ms + FRAME_MS, FRAME_MS):
             voiced = any(u.start_ms <= offset <= u.end_ms for u in self._script)
+            self.last_offset_ms = offset
             yield InboundFrame(payload=VOICED if voiced else SILENT, offset_ms=offset)
             # Let the recognizer, the model and the synthesizer actually make progress.
             # Without a real yield the whole call would resolve inside one event-loop

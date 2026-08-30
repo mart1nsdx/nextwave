@@ -76,6 +76,10 @@ class InMemoryTranscriptStore:
         bucket.setdefault(event.event_key, event)  # first write wins; redelivery is a no-op
 
     async def list_events(self, call_sid: str) -> list[TranscriptEvent]:
+        # (audio_offset_ms, sequence_number, created_at) is the order Supabase returns.
+        # There is no created_at on the in-memory event, but dicts preserve insertion
+        # order and sorted() is stable, so write order breaks the remaining ties exactly
+        # as row creation order does in the database.
         events = self._events.get(call_sid, {}).values()
         return sorted(events, key=lambda e: (e.audio_offset_ms, e.sequence_number))
 
@@ -248,6 +252,11 @@ class SupabaseTranscriptStore:
             "audio_offset_ms": event.audio_offset_ms,
             "text": event.text,
             "is_final": event.is_final,
+            "interrupted": event.interrupted,
+            # Denormalised from the CallBinding by the caller; W2 owns plumbing the
+            # binding into the live session, so null until it lands.
+            "operation_id": str(event.operation_id) if event.operation_id else None,
+            "rfq_id": str(event.rfq_id) if event.rfq_id else None,
         }
 
         def _insert() -> Any:
@@ -271,6 +280,7 @@ class SupabaseTranscriptStore:
                 .eq("case_id", case_id)
                 .order("audio_offset_ms")
                 .order("sequence_number")
+                .order("created_at")
                 .execute()
             )
 
@@ -285,6 +295,9 @@ class SupabaseTranscriptStore:
                 audio_offset_ms=r["audio_offset_ms"],
                 text=r["text"],
                 is_final=r["is_final"],
+                interrupted=r.get("interrupted", False),
+                operation_id=r.get("operation_id"),
+                rfq_id=r.get("rfq_id"),
             )
             for r in (result.data or [])
         ]

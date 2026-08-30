@@ -18,6 +18,7 @@ import time
 from collections import deque
 from collections.abc import AsyncIterator, Awaitable, Callable
 from enum import Enum, auto
+from typing import Protocol
 
 import structlog
 from agents import TResponseInputItem
@@ -38,8 +39,29 @@ from .vad import EnergyVad, VadSettings
 
 log = structlog.get_logger(__name__)
 
-FinalTranscriptSink = Callable[[str, TranscriptTrack, Speaker, int, str], Awaitable[None]]
 HandoffSink = Callable[[str, HandoffReason, int, str], Awaitable[bool]]
+
+
+class FinalTranscriptSink(Protocol):
+    """What the session calls once a segment is settled. Wired to the evidence ledger.
+
+    ``sequence_number`` is supplied by the session because a call is the only scope in
+    which the count is meaningful, and because the previous owner — a dict in the app
+    factory keyed by CallSid — leaked for the process lifetime and could hand the same
+    number to two different segments.
+    """
+
+    async def __call__(
+        self,
+        call_sid: str,
+        track: TranscriptTrack,
+        speaker: Speaker,
+        *,
+        sequence_number: int,
+        audio_offset_ms: int,
+        text: str,
+        interrupted: bool = False,
+    ) -> None: ...
 
 
 class Turn(Enum):
@@ -87,6 +109,8 @@ class VoiceSession:
         self._log = log
         self._call_id = ""
         self._handoff_requested = False
+        self._sequence = 0
+        self._turn_anchor_ms: int | None = None
 
     @property
     def history(self) -> list[TResponseInputItem]:
@@ -139,8 +163,7 @@ class VoiceSession:
                     # arrive just after this session was created.
                     if self._source is not None:
                         self._call_id = self._source.call_id
-                    await self._on_final_transcript(
-                        self._call_id,
+                    await self._persist(
                         TranscriptTrack.INBOUND,
                         Speaker.CALLER,
                         event.offset_ms,
@@ -180,6 +203,11 @@ class VoiceSession:
 
     async def _play(self, voice: TtsSession, sink: AudioSink) -> None:
         async for chunk in voice.audio():
+            if self._turn_anchor_ms is None and self._source is not None:
+                # The transport's presentation timestamp at the instant this turn's first
+                # audio goes on the wire. Read here rather than in _respond because this
+                # is the moment the counterparty could first have heard anything.
+                self._turn_anchor_ms = self._source.last_offset_ms
             await sink.send_audio(chunk)
             active = self._active_latency
             if (
@@ -228,7 +256,11 @@ class VoiceSession:
         # audio out. Resetting here would make the agent deaf to an interruption during
         # the very stretch where interruptions actually happen.
         self._turn = Turn.SPEAKING
+        # A fresh anchor per turn: _play fills it the moment this reply's first audio
+        # reaches the sink.
+        self._turn_anchor_ms = None
         said = ""
+        interrupted = False
         try:
             directive = (
                 self._guard.input_directive(
@@ -265,17 +297,6 @@ class VoiceSession:
                     break
             await self._flush()
             self._history.append({"role": "assistant", "content": said})
-            if said and self._on_final_transcript is not None:
-                # A bidirectional Twilio stream exposes only the caller's incoming
-                # track. Record the generated reply separately, anchored to the turn
-                # it answers, so the post-call brief can account for agent actions.
-                await self._on_final_transcript(
-                    self._call_id,
-                    TranscriptTrack.OUTBOUND,
-                    Speaker.AGENT,
-                    offset_ms,
-                    said,
-                )
             self._log.info("said", text=said)
             if self._active_latency is not None:
                 self._active_latency.spoken_text = said
@@ -284,6 +305,7 @@ class VoiceSession:
             # Record only what was handed to the synthesizer. The counterparty may have
             # heard less — playback was still in flight — but never more, so the agent
             # can never later claim it said something the other side never got.
+            interrupted = True
             if said:
                 self._history.append({"role": "assistant", "content": f"{said} [interrupted]"})
             if self._active_latency is not None:
@@ -301,6 +323,62 @@ class VoiceSession:
             await self._speak(RECOVERY_LINE)
             await self._flush()
             self._finish_latency(interrupted=False)
+        finally:
+            # A bidirectional Twilio stream exposes only the caller's incoming track, so
+            # the agent's own line is written here or nowhere. It lives in a `finally`
+            # because the turn a judge is most likely to create is the one that gets cut
+            # off, and a barge-in reply that reached the phone but never the ledger is
+            # evidence that silently does not exist. `said` is still only what was handed
+            # to the synthesizer — never more.
+            await self._persist(
+                TranscriptTrack.OUTBOUND,
+                Speaker.AGENT,
+                self._agent_turn_offset_ms(offset_ms),
+                said,
+                interrupted=interrupted,
+            )
+
+    async def _persist(
+        self,
+        track: TranscriptTrack,
+        speaker: Speaker,
+        audio_offset_ms: int,
+        text: str,
+        *,
+        interrupted: bool = False,
+    ) -> None:
+        """Hand one settled segment to the ledger, numbered within this call.
+
+        One call, one session, one counter — no dict keyed by CallSid outliving the call
+        it described, and no seeding read that two events can race across an await.
+        """
+        if self._on_final_transcript is None or not text:
+            return
+        self._sequence += 1
+        await self._on_final_transcript(
+            self._call_id,
+            track,
+            speaker,
+            sequence_number=self._sequence,
+            audio_offset_ms=audio_offset_ms,
+            text=text,
+            interrupted=interrupted,
+        )
+
+    def _agent_turn_offset_ms(self, utterance_end_ms: int) -> int:
+        """When the agent spoke, not when the counterparty stopped.
+
+        UtteranceEnd's offset is an instant *before* this reply existed, and a single
+        instant for a whole multi-clause answer. Anchoring an agent turn there points a
+        commitment at a moment when nothing had been agreed (AGENTS.md invariant #3).
+        """
+        if self._turn_anchor_ms is not None:
+            return self._turn_anchor_ms
+        # Nothing reached the sink for this turn. The live stream position is still an
+        # offset the transport observed, never one computed here.
+        if self._source is not None:
+            return max(self._source.last_offset_ms, utterance_end_ms)
+        return utterance_end_ms
 
     async def _barge_in(self, offset_ms: int) -> None:
         """Stop talking, now. Three cuts, because audio is buffered in three places."""
